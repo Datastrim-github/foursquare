@@ -1,0 +1,2187 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Four Square 3D</title>
+  <style>
+    *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+    html, body { width:100%; height:100%; overflow:hidden; background:#000; }
+    body {
+      touch-action:none; user-select:none; -webkit-user-select:none;
+      display:flex; flex-direction:column;
+      font-family:'Segoe UI',system-ui,sans-serif;
+    }
+
+    /* ── Score bar (top, solid) ───────────────────── */
+    #score-bar {
+      flex:0 0 auto;
+      background:#0a0a12;
+      border-bottom:2px solid rgba(255,255,255,.10);
+      display:grid; grid-template-columns:1fr 1fr;
+      gap:5px; padding:8px 10px; z-index:10;
+    }
+    .badge {
+      background:rgba(255,255,255,.07);
+      border-radius:10px; padding:6px 10px; color:#fff; font-size:11px; font-weight:600;
+      border:2px solid rgba(255,255,255,.14); display:flex; align-items:center; gap:6px;
+    }
+    .badge.me { border-color:inherit!important; }
+    .dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+
+    /* ── Canvas — flex-grow fills ALL remaining space ─ */
+    #canvas-wrap {
+      flex:1 1 0; min-height:0; position:relative; overflow:hidden;
+    }
+    canvas { display:block; }
+    #c {
+      position:absolute; inset:0;
+      width:100%!important; height:100%!important;
+    }
+
+    /* message overlay lives inside canvas-wrap */
+    #ui {
+      position:absolute; inset:0; pointer-events:none; z-index:5;
+    }
+    #msg {
+      position:absolute; top:45%; left:50%; transform:translate(-50%,-50%);
+      background:rgba(0,0,0,.82); backdrop-filter:blur(18px);
+      border-radius:18px; padding:16px 26px; color:#fff; font-size:16px; font-weight:700;
+      text-align:center; white-space:pre; line-height:1.65; max-width:88vw;
+      transition:opacity .2s;
+    }
+    #msg.hidden { opacity:0; pointer-events:none; }
+    #power-wrap {
+      position:absolute; left:50%; bottom:12px; transform:translateX(-50%);
+      width:140px; height:10px; border-radius:6px;
+      background:rgba(0,0,0,.35); border:2px solid rgba(255,255,255,.4);
+      overflow:hidden; display:none;
+    }
+    #power-bar {
+      height:100%; width:0%;
+      background:linear-gradient(90deg,#27AE60,#F39C12,#E74C3C);
+      border-radius:4px; transition:width .04s linear;
+    }
+
+    #keyhint {
+      position:absolute; bottom:8px; left:50%; transform:translateX(-50%);
+      color:rgba(255,255,255,.38); font-size:10px; letter-spacing:1.2px;
+      text-align:center; white-space:nowrap; pointer-events:none;
+    }
+    #keyhint.hidden { display:none; }
+
+    /* ── Ready overlay ───────────────────────────── */
+    #ready-overlay {
+      position:fixed; inset:0; z-index:50;
+      background:rgba(0,0,0,.82); backdrop-filter:blur(18px);
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:24px;
+    }
+    #ready-overlay.hidden { display:none; }
+    #ready-title {
+      color:#fff; font-size:28px; font-weight:900;
+      letter-spacing:3px; text-align:center; white-space:pre;
+      line-height:1.5;
+    }
+    #ready-subtitle {
+      color:rgba(255,255,255,.55); font-size:13px;
+      letter-spacing:2px; text-align:center;
+    }
+    #ready-btn {
+      background:linear-gradient(145deg,#27AE60,#1A7A43);
+      color:#fff; font-size:22px; font-weight:900;
+      letter-spacing:4px; padding:18px 56px; border-radius:60px;
+      border:none; cursor:pointer;
+      box-shadow:0 8px 36px rgba(39,174,96,.7);
+      animation:rbtnpulse .5s ease-in-out infinite alternate;
+      -webkit-tap-highlight-color:transparent;
+    }
+    @keyframes rbtnpulse {
+      from { transform:scale(1);   box-shadow:0 8px 36px rgba(39,174,96,.7); }
+      to   { transform:scale(1.07);box-shadow:0 14px 52px rgba(39,174,96,1); }
+    }
+    #not-ready-btn {
+      background:transparent; color:rgba(255,255,255,.45);
+      font-size:13px; letter-spacing:2px; font-weight:600;
+      border:2px solid rgba(255,255,255,.2); border-radius:30px;
+      padding:10px 28px; cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
+    }
+    #not-ready-btn:active { background:rgba(255,255,255,.08); }
+
+    /* ── Main menu / character select ───────────── */
+    #main-menu {
+      position:fixed; inset:0; z-index:80;
+      background:linear-gradient(160deg,#FFE44D 0%,#FFD000 50%,#FFC200 100%);
+      display:flex; flex-direction:column; align-items:center;
+      overflow-y:auto; padding:0 0 24px;
+    }
+    #main-menu.hidden { display:none; }
+
+    #menu-header {
+      width:100%; text-align:center; padding:22px 0 8px;
+      color:#fff; font-size:26px; font-weight:900; letter-spacing:5px;
+      text-shadow:0 0 30px rgba(255,255,150,.5);
+    }
+    #menu-header span { color:#F1C40F; }
+
+    /* ── Two-column menu layout ─────────────────── */
+    #menu-body {
+      display:flex; flex:1; width:100%; max-width:600px;
+      padding:8px 12px 0; gap:12px; min-height:0;
+    }
+
+    /* Left column: tab list */
+    #cust-tabs {
+      display:flex; flex-direction:column; gap:6px;
+      width:110px; flex-shrink:0; padding-top:4px;
+    }
+    .c-tab {
+      background:rgba(255,255,255,.15); border:2px solid #111;
+      border-radius:12px; color:rgba(255,255,255,.65); font-size:12px; font-weight:700;
+      padding:10px 8px; cursor:pointer; -webkit-tap-highlight-color:transparent;
+      transition:background .1s, color .1s, border-color .1s; text-align:left;
+      white-space:nowrap;
+    }
+    .c-tab.active {
+      background:#F1C40F; border-color:#111; color:#111;
+    }
+
+    /* Right column: preview + options stacked */
+    #menu-right {
+      flex:1; display:flex; flex-direction:column; align-items:center; gap:10px;
+    }
+
+    /* Character preview */
+    #podium-wrap {
+      position:relative; display:flex; flex-direction:column; align-items:center;
+    }
+    #preview-canvas {
+      width:260px; height:420px; display:block; border-radius:14px;
+      background:radial-gradient(ellipse at 50% 75%,rgba(255,255,150,.10),transparent 70%);
+    }
+    #avatar-btn {
+      position:absolute; right:-14px; top:10px;
+      background:rgba(255,255,255,.12);
+      border:2px solid rgba(255,255,255,.28); border-radius:50%;
+      color:#fff; font-size:18px; width:40px; height:40px;
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer; -webkit-tap-highlight-color:transparent;
+      transition:background .12s;
+    }
+    #avatar-btn:active { background:rgba(255,255,255,.30); }
+    #avatar-tooltip { display:none; }
+
+    /* Options grid under preview */
+    #cust-options {
+      display:flex; gap:8px; flex-wrap:wrap; justify-content:center;
+      width:100%; min-height:48px;
+    }
+    .c-opt {
+      width:40px; height:40px; border-radius:10px; border:3px solid #111;
+      cursor:pointer; display:flex; align-items:center; justify-content:center;
+      font-size:18px; font-weight:700; transition:transform .1s, border-color .1s;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .c-opt.selected { border-color:#F1C40F; transform:scale(1.18); }
+    .c-opt:active { transform:scale(.90); }
+
+    /* Start button */
+    #menu-start-btn {
+      width:auto; margin:10px 12px 14px; align-self:center;
+      background:linear-gradient(145deg,#E74C3C,#922B21);
+      color:#fff; font-size:14px; font-weight:900;
+      letter-spacing:3px; padding:10px 28px; border-radius:40px;
+      border:none; cursor:pointer;
+      box-shadow:0 8px 30px rgba(231,76,60,.7);
+      animation:menupulse .55s ease-in-out infinite alternate;
+      -webkit-tap-highlight-color:transparent;
+    }
+    @keyframes menupulse {
+      from { box-shadow:0 8px 30px rgba(231,76,60,.6); transform:scale(1); }
+      to   { box-shadow:0 14px 46px rgba(231,76,60,1); transform:scale(1.04); }
+    }
+
+    /* ── Name input screen ───────────────────────── */
+    #name-screen {
+      position:fixed; inset:0; z-index:60;
+      background:rgba(0,0,0,.88); backdrop-filter:blur(20px);
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:18px;
+      padding:20px;
+    }
+    #name-screen.hidden { display:none; }
+    #name-title {
+      color:#fff; font-size:24px; font-weight:900;
+      letter-spacing:3px; text-align:center;
+    }
+    #name-subtitle {
+      color:rgba(255,255,255,.5); font-size:12px;
+      letter-spacing:2px; text-align:center;
+      margin-bottom:4px;
+    }
+    .name-row {
+      display:flex; align-items:center; gap:10px; width:100%; max-width:340px;
+    }
+    .name-dot {
+      width:14px; height:14px; border-radius:50%; flex-shrink:0;
+    }
+    .name-input {
+      flex:1; background:rgba(255,255,255,.1);
+      border:2px solid rgba(255,255,255,.25); border-radius:12px;
+      color:#fff; font-size:16px; font-weight:600;
+      padding:10px 14px; outline:none;
+      -webkit-tap-highlight-color:transparent;
+    }
+    .name-input:focus { border-color:rgba(255,255,255,.55); }
+    .name-input::placeholder { color:rgba(255,255,255,.3); }
+    #refresh-names-btn {
+      background:rgba(255,255,255,.1);
+      border:2px solid rgba(255,255,255,.22); border-radius:24px;
+      color:rgba(255,255,255,.75); font-size:13px; font-weight:700;
+      padding:8px 22px; cursor:pointer; letter-spacing:1px;
+      -webkit-tap-highlight-color:transparent;
+      transition:background .12s, transform .1s;
+      align-self:center;
+    }
+    #refresh-names-btn:active { background:rgba(255,255,255,.25); transform:rotate(180deg) scale(.95); }
+
+    .quick-name-btn {
+      background:rgba(255,255,255,.12);
+      border:2px solid rgba(255,255,255,.25); border-radius:20px;
+      color:#fff; font-size:14px; font-weight:700;
+      padding:7px 22px; cursor:pointer;
+      -webkit-tap-highlight-color:transparent;
+      transition:background .1s;
+    }
+    .quick-name-btn:active { background:rgba(255,255,255,.3); }
+
+    .back-btn {
+      position:absolute; top:14px; left:14px;
+      background:rgba(255,255,255,.10);
+      border:2px solid rgba(255,255,255,.22); border-radius:22px;
+      color:rgba(255,255,255,.7); font-size:13px; font-weight:700;
+      padding:8px 18px; cursor:pointer; letter-spacing:1px;
+      -webkit-tap-highlight-color:transparent;
+      transition:background .12s;
+    }
+    .back-btn:active { background:rgba(255,255,255,.28); }
+
+    #name-start-btn {
+      margin-top:8px;
+      background:linear-gradient(145deg,#27AE60,#1A7A43);
+      color:#fff; font-size:20px; font-weight:900;
+      letter-spacing:3px; padding:16px 52px; border-radius:60px;
+      border:none; cursor:pointer;
+      box-shadow:0 8px 32px rgba(39,174,96,.7);
+      -webkit-tap-highlight-color:transparent;
+    }
+
+    /* ── Control bar (bottom, solid) ─────────────── */
+    #ctrl-bar {
+      flex:0 0 auto;
+      background:#0a0a12;
+      border-top:2px solid rgba(255,255,255,.10);
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 16px 14px; z-index:10; pointer-events:auto; gap:8px;
+    }
+    #ctrl-center { text-align:center; flex:0 0 auto; }
+    #lives       { font-size:20px; letter-spacing:3px; }
+    #rank-label  { color:rgba(255,255,255,.55); font-size:10px; letter-spacing:2px; font-weight:600; margin-top:3px; }
+
+    /* ── Super smash progress bar ─────────────────── */
+    #super-wrap {
+      margin-top:5px; width:120px;
+      background:rgba(255,255,255,.10); border-radius:6px;
+      height:8px; overflow:hidden; position:relative;
+      border:1px solid rgba(255,255,255,.18);
+    }
+    #super-fill {
+      height:100%; width:0%; border-radius:6px;
+      background:linear-gradient(90deg,#F39C12,#E74C3C);
+      transition:width .18s ease, background .3s;
+      box-shadow:0 0 6px rgba(231,76,60,.6);
+    }
+    #super-label {
+      font-size:9px; letter-spacing:1.5px; color:rgba(255,255,255,.45);
+      margin-top:2px; font-weight:700;
+    }
+    /* Ready state: pulsing glow */
+    #super-wrap.ready #super-fill {
+      background:linear-gradient(90deg,#F1C40F,#E74C3C,#9B59B6);
+      animation:superglow .6s ease-in-out infinite alternate;
+    }
+    @keyframes superglow {
+      from { box-shadow:0 0 8px rgba(231,76,60,.8); filter:brightness(1); }
+      to   { box-shadow:0 0 22px rgba(231,76,60,1); filter:brightness(1.4); }
+    }
+    /* btnS super state */
+    #btnS.super {
+      background:linear-gradient(145deg,#9B59B6,#6C3483)!important;
+      box-shadow:0 4px 24px rgba(155,89,182,.8)!important;
+      animation:superpulse .35s ease-in-out infinite alternate!important;
+    }
+    @keyframes superpulse {
+      from { box-shadow:0 4px 20px rgba(155,89,182,.7); transform:scale(1); }
+      to   { box-shadow:0 8px 40px rgba(155,89,182,1); transform:scale(1.14); }
+    }
+
+    /* ── D-pad ───────────────────────────────────── */
+    #dpad {
+      display:grid;
+      grid-template-areas:". u ." "l . r" ". d .";
+      grid-template-columns:50px 50px 50px;
+      grid-template-rows:50px 50px 50px;
+      gap:3px; flex-shrink:0;
+    }
+    #dpad button {
+      background:rgba(255,255,255,.12);
+      border:2px solid rgba(255,255,255,.25); border-radius:11px;
+      color:#fff; font-size:19px; cursor:pointer;
+      -webkit-tap-highlight-color:transparent; touch-action:none;
+      display:flex; align-items:center; justify-content:center;
+      transition:background .1s;
+    }
+    #dpad button:active, #dpad button.pressed { background:rgba(255,255,255,.38); }
+    #dbtn-u { grid-area:u; } #dbtn-l { grid-area:l; }
+    #dbtn-r { grid-area:r; } #dbtn-d { grid-area:d; }
+
+    /* ── Action buttons ──────────────────────────── */
+    #actions { display:flex; flex-direction:row; gap:10px; align-items:center; flex-shrink:0; }
+    .abtn {
+      width:68px; height:68px; border-radius:50%;
+      border:3px solid rgba(255,255,255,.22);
+      color:#fff; font-size:11px; font-weight:900; letter-spacing:1px;
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:none;
+      transition:transform .08s, box-shadow .08s, opacity .2s;
+      line-height:1.2; text-align:center;
+    }
+    .abtn .key { font-size:19px; font-weight:900; }
+    .abtn.disabled { opacity:.22; pointer-events:none; }
+    .abtn:active { transform:scale(.90); }
+
+    #btnW { background:linear-gradient(145deg,#27AE60,#1A7A43); box-shadow:0 4px 18px rgba(39,174,96,.5); }
+    #btnW.active { animation:wpulse .45s ease-in-out infinite alternate; }
+    @keyframes wpulse {
+      from { box-shadow:0 4px 18px rgba(39,174,96,.5); }
+      to   { box-shadow:0 8px 32px rgba(39,174,96,1); transform:scale(1.08); }
+    }
+    #btnA { background:linear-gradient(145deg,#2980B9,#1A5276); box-shadow:0 4px 18px rgba(41,128,185,.5); }
+    #btnA.active { animation:apulse .4s ease-in-out infinite alternate; }
+    @keyframes apulse {
+      from { box-shadow:0 4px 18px rgba(41,128,185,.5); }
+      to   { box-shadow:0 8px 32px rgba(41,128,185,1); transform:scale(1.08); }
+    }
+    #btnS { background:linear-gradient(145deg,#E74C3C,#922B21); box-shadow:0 4px 18px rgba(231,76,60,.5); }
+    #btnS.active { animation:spulse .35s ease-in-out infinite alternate; }
+    @keyframes spulse {
+      from { box-shadow:0 4px 18px rgba(231,76,60,.5); }
+      to   { box-shadow:0 8px 40px rgba(231,76,60,1); transform:scale(1.10); }
+    }
+  </style>
+</head>
+<body>
+<!-- Score bar -->
+<div id="score-bar"><div id="ranks"></div></div>
+
+<!-- Canvas wrapper — flex-grows to fill space between bars -->
+<div id="canvas-wrap">
+  <canvas id="c"></canvas>
+  <div id="ui">
+    <div id="msg" class="hidden"></div>
+    <div id="keyhint">Piltaster = beveg  •  W = sentr  •  A = kast  •  S = smash</div>
+    <div id="power-wrap"><div id="power-bar"></div></div>
+  </div>
+</div>
+
+<!-- Control bar -->
+<!-- ══ MAIN MENU ══ -->
+<div id="main-menu">
+  <div id="menu-header">FOUR <span>SQUARE</span> 3D</div>
+
+  <div id="menu-body">
+    <!-- Left: tab list -->
+    <div id="cust-tabs">
+      <button class="c-tab active" data-tab="hair">💇 Hår</button>
+      <button class="c-tab" data-tab="haircolor">🎨 Hårfarge</button>
+      <button class="c-tab" data-tab="shirt">👕 Skjorte</button>
+      <button class="c-tab" data-tab="pants">👖 Bukse</button>
+      <button class="c-tab" data-tab="shoes">👟 Sko</button>
+      <button class="c-tab" data-tab="gloves">🧤 Hansker</button>
+    </div>
+
+    <!-- Right: preview + options -->
+    <div id="menu-right">
+      <div id="podium-wrap">
+        <canvas id="preview-canvas"></canvas>
+        <div id="avatar-btn" title="Tilfeldig">🎲</div>
+        <div id="avatar-tooltip"></div>
+      </div>
+      <div id="cust-options"></div>
+    </div>
+  </div>
+
+  <button id="menu-start-btn">SPILL! 🎾</button>
+</div>
+
+<!-- Name input screen (shown first) -->
+<div id="name-screen" style="display:none">
+  <button class="back-btn" id="name-back-btn" style="margin-bottom:8px;position:static;align-self:flex-start">← Tilbake</button>
+  <div id="name-title">FOUR SQUARE 3D</div>
+  <div id="name-subtitle">SKRIV INN NAVNENE</div>
+  <button id="refresh-names-btn" onclick="refreshAiNames()" title="Bytt tilfeldige navn">🔄 Nye navn</button>
+  <div class="name-row">
+    <div class="name-dot" style="background:#E74C3C"></div>
+    <input class="name-input" id="name0" placeholder="Spiller 1 (King)" maxlength="14">
+  </div>
+  <div class="name-row">
+    <div class="name-dot" style="background:#3498DB"></div>
+    <input class="name-input" id="name1" placeholder="Spiller 2 (Queen)" maxlength="14">
+  </div>
+  <div class="name-row">
+    <div class="name-dot" style="background:#27AE60"></div>
+    <input class="name-input" id="name2" placeholder="Ditt navn" maxlength="14">
+  </div>
+  <div style="display:flex;gap:10px;margin-top:-8px;">
+    <button class="quick-name-btn" onclick="document.getElementById('name2').value='Even'">Even</button>
+    <button class="quick-name-btn" onclick="document.getElementById('name2').value='Mats'">Mats</button>
+    <button class="quick-name-btn" onclick="document.getElementById('name2').value='Jens'">Jens</button>
+  </div>
+  <div class="name-row">
+    <div class="name-dot" style="background:#F39C12"></div>
+    <input class="name-input" id="name3" placeholder="Spiller 4 (Dunce)" maxlength="14">
+  </div>
+  <button id="name-start-btn">SPILL! 🎾</button>
+</div>
+
+<!-- Ready overlay -->
+<div id="ready-overlay">
+  <button class="back-btn" id="ready-back-btn" style="position:static;margin-bottom:8px;align-self:flex-start">← Tilbake</button>
+  <div id="ready-title">FOUR SQUARE 3D</div>
+  <div id="ready-subtitle">ER DU KLAR?</div>
+  <button id="ready-btn">✅ KLAR!</button>
+  <button id="not-ready-btn">❌ Ikke klar</button>
+</div>
+
+<div id="ctrl-bar">
+  <div id="dpad">
+    <button id="dbtn-u">↑</button>
+    <button id="dbtn-l">←</button>
+    <button id="dbtn-r">→</button>
+    <button id="dbtn-d">↓</button>
+  </div>
+  <div id="ctrl-center">
+    <div id="lives">❤️❤️❤️</div>
+    <div id="rank-label">RANG 3 AV 4</div>
+    <div id="super-wrap"><div id="super-fill"></div></div>
+    <div id="super-label">SUPER SMASH</div>
+  </div>
+  <div id="actions">
+    <button class="abtn disabled" id="btnW"><span class="key">W</span>SENTR</button>
+    <button class="abtn disabled" id="btnA"><span class="key">A</span>KAST</button>
+    <button class="abtn disabled" id="btnS"><span class="key">S</span>SMASH</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════
+// CONFIG
+// ══════════════════════════════════════════════════════
+const GRAV        = 20;
+const BOUNCE      = 0.85;
+const ARC_H       = 1.0;    // ball arcs to hand height
+const TOSS_H      = 3.20;   // toss height above hand
+const AI_DLY_MIN  = 0.08;
+const AI_DLY_MAX  = 0.12;
+const BALL_R      = 0.13;
+const CHAR_SPEED  = 3.6;
+const PLAYER_SPD  = 3.0;
+
+const BODY_H = 0.56, LEG_H = 0.46, UARM_H = 0.26, FARM_H = 0.26, HEAD_R = 0.155;
+
+const SQ = [
+  { id:0, name:'King ♛',   cx: 2, cz:-2, hex:'#E74C3C', color:0xE74C3C, isPlayer:false },
+  { id:1, name:'Queen ♚',  cx:-2, cz:-2, hex:'#3498DB', color:0x3498DB, isPlayer:false },
+  { id:2, name:'Jack ♟',   cx:-2, cz: 2, hex:'#27AE60', color:0x27AE60, isPlayer:true  },
+  { id:3, name:'Dunce 🃏', cx: 2, cz: 2, hex:'#F39C12', color:0xF39C12, isPlayer:false },
+];
+const RANK_NAMES = ['King ♛','Queen ♚','Jack ♟','Dunce 🃏'];
+const PLAYER_SQ   = 2;
+const SUPER_MAX   = 20;   // hits needed for super smash
+const PSQ        = SQ[PLAYER_SQ]; // shorthand
+let gameActive = false; // set true when game starts
+
+// Power charge
+const MAX_CHARGE = 0.7;
+const MIN_POWER  = 1.0;
+let chargeKey  = null;
+let chargeTime = 0;
+
+// ══════════════════════════════════════════════════════
+// RENDERER
+// ══════════════════════════════════════════════════════
+const canvas   = document.getElementById('c');
+const mainMenu = document.getElementById('main-menu');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled       = true;
+renderer.shadowMap.type          = THREE.PCFSoftShadowMap;
+renderer.toneMapping             = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure     = 1.12;
+renderer.physicallyCorrectLights = true;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xB8D4E8); // overcast school-day sky
+scene.fog        = new THREE.FogExp2(0xC5DAE8,0.028);
+
+const camera = new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,200);
+camera.position.set(0,11.5,16.0);
+camera.lookAt(0,0,-0.5);
+
+// Auto-fit camera so the 4 court corners fill the viewport exactly
+const _v3 = new THREE.Vector3();
+const _corners = [
+  new THREE.Vector3(-4,0,-4), new THREE.Vector3( 4,0,-4),
+  new THREE.Vector3(-4,0, 4), new THREE.Vector3( 4,0, 4),
+];
+function fitCameraToCourt(){
+  const W = renderer.domElement.clientWidth  || innerWidth;
+  const H = renderer.domElement.clientHeight || innerHeight;
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+
+  // Binary-search zoom: pull camera along its direction until all corners are inside NDC [-0.96, 0.96]
+  const dir   = new THREE.Vector3(0,11.5,16.0).normalize();
+  const target= new THREE.Vector3(0,0,-0.5);
+  let dist = 5;
+  for(let step=8; step>0.01; step*=0.5){
+    camera.position.copy(dir).multiplyScalar(dist).add(new THREE.Vector3(0,0,0));
+    // recompute so dir is from origin toward old camera pos (fixed angle)
+    camera.position.set(0, dist*11.5/Math.hypot(11.5,16), dist*16/Math.hypot(11.5,16));
+    camera.lookAt(target);
+    camera.updateMatrixWorld();
+    const pm = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    let allIn = true;
+    for(const corner of _corners){
+      _v3.copy(corner).applyMatrix4(pm);
+      if(Math.abs(_v3.x) > 0.96 || Math.abs(_v3.y) > 0.97){ allIn=false; break; }
+    }
+    dist += allIn ? -step : step;
+  }
+  camera.updateMatrixWorld();
+}
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xE8EDF2,0.7));
+scene.add(new THREE.HemisphereLight(0xC8DAEC,0x8899AA,0.5));
+const sun = new THREE.DirectionalLight(0xF0EEDD,1.4);
+sun.position.set(7,15,9); sun.castShadow=true;
+Object.assign(sun.shadow.camera,{near:.5,far:80,left:-20,right:20,top:20,bottom:-20});
+sun.shadow.mapSize.set(2048,2048); sun.shadow.bias=-0.0005;
+scene.add(sun);
+const fill=new THREE.DirectionalLight(0xCCDDEE,0.4); fill.position.set(-8,4,-6); scene.add(fill);
+
+// ══════════════════════════════════════════════════════
+// COURT
+// ══════════════════════════════════════════════════════
+// Schoolyard asphalt ground
+const gnd=new THREE.Mesh(new THREE.PlaneGeometry(80,80),new THREE.MeshPhongMaterial({color:0x888A88,shininess:4}));
+gnd.rotation.x=-Math.PI/2; gnd.position.y=-0.01; gnd.receiveShadow=true; scene.add(gnd);
+// Slightly lighter court base
+const asp=new THREE.Mesh(new THREE.BoxGeometry(8.3,.05,8.3),new THREE.MeshPhongMaterial({color:0x9A9C9A,shininess:6}));
+asp.position.y=0.025; asp.receiveShadow=true; scene.add(asp);
+
+// ── School building backdrop (behind court) ──────────
+function addBuilding(x,z,w,h,d,col){
+  const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshPhongMaterial({color:col,shininess:8}));
+  b.position.set(x,h/2,z); b.castShadow=true; b.receiveShadow=true; scene.add(b); return b;
+}
+// Main brick building
+addBuilding(0,-16,32,8,2,0xC47C5A);   // main wall
+addBuilding(0,-15.6,32,0.4,2.1,0x8B5A3A); // darker ledge at base
+addBuilding(0,-16,32,0.3,2.1,0x8B5A3A); // roof ledge
+// Side wings
+addBuilding(-18,-12,4,6,10,0xBF7850);
+addBuilding( 18,-12,4,6,10,0xBF7850);
+// Windows (darker rectangles punched in)
+for(let wx=-12;wx<=12;wx+=4){
+  const win=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.8,0.12),new THREE.MeshPhongMaterial({color:0x6A8EAD,shininess:80,specular:new THREE.Color(0.3,0.4,0.5)}));
+  win.position.set(wx,3.5,-14.96); scene.add(win);
+  const win2=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.8,0.12),new THREE.MeshPhongMaterial({color:0x6A8EAD,shininess:80,specular:new THREE.Color(0.3,0.4,0.5)}));
+  win2.position.set(wx,1.2,-14.96); scene.add(win2);
+}
+// Entrance door
+const door=new THREE.Mesh(new THREE.BoxGeometry(2.2,3.4,0.15),new THREE.MeshPhongMaterial({color:0x3D5A6A,shininess:20}));
+door.position.set(0,1.7,-14.94); scene.add(door);
+// "SKOLE" sign above door
+const sign=new THREE.Mesh(new THREE.BoxGeometry(4,0.7,0.18),new THREE.MeshPhongMaterial({color:0xF5E642,shininess:12}));
+sign.position.set(0,5,-14.92); scene.add(sign);
+
+// ── Fence around yard (chain-link style: thin posts) ─
+function fence(x1,z1,x2,z2){
+  const dx=x2-x1,dz=z2-z1,len=Math.hypot(dx,dz);
+  const posts=Math.floor(len/1.8);
+  for(let i=0;i<=posts;i++){
+    const t=i/posts;
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,2.2,6),
+      new THREE.MeshPhongMaterial({color:0x889988,shininess:30}));
+    post.position.set(x1+dx*t,.9,z1+dz*t); scene.add(post);
+  }
+  // horizontal rail
+  const rail=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,len,4),
+    new THREE.MeshPhongMaterial({color:0x778877,shininess:25}));
+  rail.rotation.z=Math.PI/2;
+  rail.rotation.y=Math.atan2(dz,dx);
+  rail.position.set((x1+x2)/2,1.9,(z1+z2)/2); scene.add(rail);
+}
+fence(-12,-12,-12, 9);
+fence( 12,-12, 12, 9);
+fence(-12,  9, 12, 9);
+
+// ── Basketball hoop (left side) ───────────────────────
+const poleGeo=new THREE.CylinderGeometry(.1,.1,4.5,8);
+const poleMat=new THREE.MeshPhongMaterial({color:0x999999,shininess:40});
+const pole=new THREE.Mesh(poleGeo,poleMat); pole.position.set(-10,2.25,-5); scene.add(pole);
+const board=new THREE.Mesh(new THREE.BoxGeometry(1.8,1.2,.08),new THREE.MeshPhongMaterial({color:0xFFFFFF,shininess:20}));
+board.position.set(-10,4.6,-5); scene.add(board);
+const rimGeo=new THREE.TorusGeometry(.38,.04,8,16);
+const rim=new THREE.Mesh(rimGeo,new THREE.MeshPhongMaterial({color:0xFF6600,shininess:50}));
+rim.rotation.x=Math.PI/2; rim.position.set(-10,4.0,-4.75); scene.add(rim);
+
+// ── Benches (right side) ────────────────────────────
+function bench(x,z){
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(2.8,.12,.7),new THREE.MeshPhongMaterial({color:0x8B5E2A,shininess:10}));
+  seat.position.set(x,.6,z); scene.add(seat);
+  [-1.1,1.1].forEach(ox=>{
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(.12,.6,.65),new THREE.MeshPhongMaterial({color:0x666666}));
+    leg.position.set(x+ox,.3,z); scene.add(leg);
+  });
+}
+bench(10.5,-3); bench(10.5,1.5);
+
+// ── Hopscotch grid on ground ─────────────────────────
+function hopLine(x1,z1,x2,z2){
+  const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1,.012,z1),new THREE.Vector3(x2,.012,z2)]);
+  scene.add(new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xFFFFCC})));
+}
+for(let i=0;i<5;i++){
+  hopLine(-11+i*0.9, 1, -11+i*0.9, 5);
+  hopLine(-11, 1+i*0.9, -7, 1+i*0.9);
+}
+SQ.forEach(sq=>{
+  const m=new THREE.Mesh(new THREE.BoxGeometry(3.94,.065,3.94),
+    new THREE.MeshPhongMaterial({color:sq.color,shininess:58,specular:new THREE.Color(.1,.1,.1)}));
+  m.position.set(sq.cx,0.033,sq.cz); m.receiveShadow=true; scene.add(m);
+});
+function addLine(x1,z1,x2,z2){
+  const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1,.075,z1),new THREE.Vector3(x2,.075,z2)]);
+  scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xFFFFFF})));
+}
+[[-4,-4,4,-4],[4,-4,4,4],[4,4,-4,4],[-4,4,-4,-4],[0,-4,0,4],[-4,0,4,0]].forEach(p=>addLine(...p));
+
+// ══════════════════════════════════════════════════════
+// BALL
+// ══════════════════════════════════════════════════════
+const bCv=document.createElement('canvas'); bCv.width=bCv.height=256;
+const bCtx=bCv.getContext('2d');
+bCtx.fillStyle='#E25822'; bCtx.fillRect(0,0,256,256);
+bCtx.strokeStyle='#111'; bCtx.lineWidth=7;
+[[0,128,256,128],[128,0,128,256]].forEach(([x1,y1,x2,y2])=>{bCtx.beginPath();bCtx.moveTo(x1,y1);bCtx.lineTo(x2,y2);bCtx.stroke();});
+[0.4,Math.PI+0.4].forEach(a=>{bCtx.beginPath();bCtx.arc(128,128,106,a,a+2.35);bCtx.stroke();});
+const ballMesh=new THREE.Mesh(
+  new THREE.SphereGeometry(BALL_R,32,32),
+  new THREE.MeshPhongMaterial({map:new THREE.CanvasTexture(bCv),shininess:95,specular:new THREE.Color(.4,.2,.1)})
+);
+ballMesh.castShadow=true; scene.add(ballMesh);
+const blobMat=new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.2});
+const blob=new THREE.Mesh(new THREE.CircleGeometry(BALL_R*1.8,16),blobMat);
+blob.rotation.x=-Math.PI/2; blob.position.y=0.072; scene.add(blob);
+
+// ── Aim X crosshair ────────────────────────────────────────────
+const aimGroup = new THREE.Group();
+const aimMat   = new THREE.MeshBasicMaterial({color:0xFF3300});
+const barGeo   = new THREE.BoxGeometry(0.8, 0.04, 0.12);
+const bar1 = new THREE.Mesh(barGeo, aimMat);               // horizontal
+const bar2 = new THREE.Mesh(barGeo, aimMat);               // diagonal 45°
+bar2.rotation.y = Math.PI/2;
+aimGroup.add(bar1); aimGroup.add(bar2);
+aimGroup.rotation.x = -Math.PI/2;
+aimGroup.position.y = 0.08;
+aimGroup.visible = false;
+scene.add(aimGroup);
+
+// Aiming state
+let aimAngle = 0;
+
+// Mouse → 3D raycasting for aim
+const _mouse = new THREE.Vector2();
+const _raycaster = new THREE.Raycaster();
+const _aimPlane = new THREE.Plane(new THREE.Vector3(0,1,0), -0.08); // ground plane
+
+window.addEventListener('mousemove', e=>{
+  _mouse.x = (e.clientX/innerWidth)*2-1;
+  _mouse.y = -(e.clientY/innerHeight)*2+1;
+});
+window.addEventListener('touchmove', e=>{
+  const t=e.touches[0];
+  _mouse.x = (t.clientX/innerWidth)*2-1;
+  _mouse.y = -(t.clientY/innerHeight)*2+1;
+}, {passive:true});
+
+// ══════════════════════════════════════════════════════
+// CHARACTER BUILDER
+// ══════════════════════════════════════════════════════
+function mkMat(col){ return new THREE.MeshPhongMaterial({color:col,shininess:22}); }
+const skinMat=mkMat(0xFFCE9E), hairMat=mkMat(0x2C1810), pantMat=mkMat(0x1A252F);
+
+function buildChar(sq){
+  const g=new THREE.Group();
+
+  function add(geo,mat,x,y,z){
+    const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z);
+    m.castShadow=true; m.receiveShadow=true; g.add(m); return m;
+  }
+
+  // Shirt / body
+  add(new THREE.CylinderGeometry(.115,.150,BODY_H,16), mkMat(new THREE.Color(sq.color)), 0, LEG_H+BODY_H/2, 0);
+  // Head + hair
+  add(new THREE.SphereGeometry(HEAD_R,16,16), skinMat, 0, LEG_H+BODY_H+HEAD_R*.9, 0);
+  const hair=new THREE.Mesh(new THREE.SphereGeometry(HEAD_R*1.07,16,8,0,Math.PI*2,0,Math.PI/2),hairMat);
+  hair.position.set(0,LEG_H+BODY_H+HEAD_R*.9,0); hair.castShadow=true; g.add(hair);
+
+  // Hip pivots → legs
+  function mkHip(ox){
+    const p=new THREE.Group(); p.position.set(ox,LEG_H,0);
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.062,.062,LEG_H,8),pantMat);
+    leg.position.y=-LEG_H/2; leg.castShadow=true; p.add(leg); g.add(p); return p;
+  }
+  sq.lHip=mkHip(-0.08); sq.rHip=mkHip(0.08);
+
+  // Shoulder → upper arm → elbow → forearm → hand marker
+  const shY=LEG_H+BODY_H*.88;
+  function mkArm(ox,isRight){
+    const sh=new THREE.Group(); sh.position.set(ox,shY,0);
+    const ua=new THREE.Mesh(new THREE.CylinderGeometry(.058,.050,UARM_H,8),skinMat);
+    ua.position.y=-UARM_H/2; ua.castShadow=true; sh.add(ua);
+    const el=new THREE.Group(); el.position.y=-UARM_H; sh.add(el);
+    const fa=new THREE.Mesh(new THREE.CylinderGeometry(.050,.044,FARM_H,8),skinMat);
+    fa.position.y=-FARM_H/2; fa.castShadow=true; el.add(fa);
+    const hm=new THREE.Object3D(); hm.position.set(0,-FARM_H*1.05,0.06); el.add(hm);
+    g.add(sh);
+    if(isRight){sq.rSh=sh;sq.rEl=el;sq.handMarker=hm;}
+    else       {sq.lSh=sh;sq.lEl=el;}
+  }
+  mkArm(-0.22,false); mkArm(0.22,true);
+
+  // Player glow ring
+  if(sq.isPlayer){
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.32,.025,8,32),
+      new THREE.MeshBasicMaterial({color:0xFFFFFF,transparent:true,opacity:.7}));
+    ring.rotation.x=-Math.PI/2; ring.position.y=0.02; g.add(ring); sq.ring=ring;
+  }
+
+  // Animation state
+  sq.walkPhase = Math.random()*Math.PI*2;
+  sq.animState = 'idle';   // idle | catching | hitting
+  sq.hitTimer  = 0;
+  sq.smashCharge = 0;  // hits accumulated toward AI smash unlock
+
+  sq.charPos    = new THREE.Vector2(sq.cx*.55, sq.cz*.55);
+  sq.charHome   = new THREE.Vector2(sq.cx*.55, sq.cz*.55);
+  sq.charTarget = sq.charPos.clone();
+
+  g.rotation.y=Math.atan2(-sq.cx,-sq.cz);
+  g.position.set(sq.charPos.x,0,sq.charPos.y);
+  scene.add(g); sq.charGroup=g;
+
+  // Default arm pose
+  sq.lSh.rotation.x=0.18; sq.rSh.rotation.x=0.18;
+  sq.lEl.rotation.x=0.25; sq.rEl.rotation.x=0.25;
+}
+SQ.forEach(buildChar);
+
+// Player: right arm raised holding ball
+PSQ.rSh.rotation.x=-1.45; PSQ.rEl.rotation.x=0.55;
+
+// ══════════════════════════════════════════════════════
+// GAME STATE
+// ══════════════════════════════════════════════════════
+// Phases: SERVE | TOSSED | PLAYING | PLAYER_CATCH | INTERMISSION | GAMEOVER
+let phase = 'SERVE';
+let ranks = [0,1,2,3];
+let lives = 3;
+let superCharge = 0;  // 0–SUPER_MAX
+
+const ball = {
+  pos:new THREE.Vector3(), vel:new THREE.Vector3(),
+  bounces:0, targetSq:-1, fromSq:-1, aiTimer:-1, landed:false, inFlight:true, isSuper:false,
+};
+const _wp = new THREE.Vector3();
+const pRank = () => ranks.indexOf(PLAYER_SQ);
+
+// Player jump state
+const jump = { active:false, t:0, duration:0, startY:0, peakY:0 };
+
+// ══════════════════════════════════════════════════════
+// PLAYER MOVEMENT INPUT
+// ══════════════════════════════════════════════════════
+const keys       = {};
+const moveInput  = { x:0, z:0 }; // d-pad contribution
+
+window.addEventListener('keydown', e=>{
+  keys[e.code]=true;
+  if(!e.repeat){
+    if(e.code==='KeyW'&&!chargeKey) startCharge('W');
+    if(e.code==='KeyA'&&!chargeKey&&(phase==='SERVE'||phase==='PLAYER_CATCH')) handleToss();
+    if(e.code==='KeyS'&&!chargeKey) startCharge('S');
+  }
+  // prevent arrow key page scroll
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e=>{
+  keys[e.code]=false;
+  if(e.code==='KeyW'&&chargeKey==='W') releaseCharge();
+  if(e.code==='KeyS'&&chargeKey==='S') releaseCharge();
+});
+
+function setupDpad(){
+  const map = [['dbtn-u',0,-1],['dbtn-d',0,1],['dbtn-l',-1,0],['dbtn-r',1,0]];
+  map.forEach(([id,dx,dz])=>{
+    const btn=document.getElementById(id);
+    function on(e){ e.preventDefault(); moveInput.x+=dx; moveInput.z+=dz; btn.classList.add('pressed'); }
+    function off(e){ e.preventDefault(); moveInput.x-=dx; moveInput.z-=dz; btn.classList.remove('pressed'); }
+    btn.addEventListener('pointerdown',on);
+    btn.addEventListener('pointerup',off);
+    btn.addEventListener('pointercancel',off);
+    btn.addEventListener('pointerleave',off);
+  });
+}
+setupDpad();
+
+function updatePlayerMovement(dt){
+  let mx=0, mz=0;
+  if(keys['ArrowLeft'])  mx-=1;
+  if(keys['ArrowRight']) mx+=1;
+  if(keys['ArrowUp'])    mz-=1;
+  if(keys['ArrowDown'])  mz+=1;
+
+
+  mx+=moveInput.x; mz+=moveInput.z;
+  const len=Math.hypot(mx,mz);
+  if(len>1){mx/=len;mz/=len;}
+  if(len<0.01) return;
+
+  const p=PSQ;
+  let nx=p.charPos.x+mx*PLAYER_SPD*dt;
+  let nz=p.charPos.y+mz*PLAYER_SPD*dt;
+  // Clamp within player's square
+  const HW=0.82;
+  nx=Math.max(PSQ.cx-HW,Math.min(PSQ.cx+HW,nx));
+  nz=Math.max(PSQ.cz-HW,Math.min(PSQ.cz+HW,nz));
+  p.charPos.x=nx; p.charPos.y=nz;
+  p.charTarget.x=nx; p.charTarget.y=nz;
+}
+
+// ══════════════════════════════════════════════════════
+// BALL TRAJECTORY — handles elevated starting positions
+// ══════════════════════════════════════════════════════
+function computeShot(startX, startY, startZ, targetX, targetZ){
+  const ddx=targetX-startX, ddz=targetZ-startZ;
+  const hDist=Math.max(0.1,Math.hypot(ddx,ddz));
+  const extraH=Math.max(0, startY-BALL_R);
+  const vy=Math.sqrt(2*GRAV*(ARC_H+extraH));
+  // Solve: BALL_R = startY + vy*t - 0.5*g*t²
+  const disc=vy*vy+2*GRAV*(startY-BALL_R);
+  const tFlight=(vy+Math.sqrt(Math.max(0,disc)))/GRAV;
+  const vH=hDist/tFlight;
+  return {
+    vx:ddx/hDist*vH,
+    vy,
+    vz:ddz/hDist*vH
+  };
+}
+
+// ══════════════════════════════════════════════════════
+// SHOOT  (aim at receiver's current world position)
+// ══════════════════════════════════════════════════════
+function shoot(fromId, toId, overrideVel){
+  const to=SQ[toId];
+
+  // Land right where the receiver is standing (±tiny jitter so it's not perfectly predictable)
+  const {lx,lz}=randInSq(to);   // random anywhere in target square
+
+  // Start position
+  let sx,sy,sz;
+  if(fromId===PLAYER_SQ){
+    sx=ball.pos.x; sy=ball.pos.y; sz=ball.pos.z;
+  } else {
+    SQ[fromId].handMarker.getWorldPosition(_wp);
+    sx=_wp.x; sy=_wp.y; sz=_wp.z;
+  }
+  ball.pos.set(sx,sy,sz);
+
+  const v = overrideVel || computeShot(sx,sy,sz,lx,lz);
+  ball.vel.set(v.vx,v.vy,v.vz);
+  ball.bounces=0; ball.targetSq=toId; ball.fromSq=fromId; ball.aiTimer=-1; ball.landed=false; ball.inFlight=true; ball.isSuper=false;
+
+  // Sender: face target, hit anim
+  SQ[fromId].animState='hitting'; SQ[fromId].hitTimer=0.40;
+  SQ[fromId].charGroup.rotation.y=Math.atan2(lx-sx, lz-sz);
+
+  // Receiver: they're already there — just raise arms
+  SQ[toId].charTarget.set(lx, lz); // walk to exact landing spot
+  SQ[toId].animState='catching';
+}
+
+// ══════════════════════════════════════════════════════
+// PLAYER CONTROLS
+// ══════════════════════════════════════════════════════
+// Pick target using aimAngle — closest square in that direction
+function aimTarget(){
+  const dx = Math.sin(aimAngle);
+  const dz = Math.cos(aimAngle);
+  // Project from player square center in aim direction, find best match
+  const candidates = SQ.filter(s=>!s.isPlayer);
+  let best = candidates[0], bestDot = -99;
+  candidates.forEach(sq=>{
+    const ex = sq.cx - PSQ.cx, ez = sq.cz - PSQ.cz;
+    const len = Math.hypot(ex,ez)||1;
+    const dot = (ex/len)*dx + (ez/len)*dz;
+    if(dot > bestDot){ bestDot=dot; best=sq; }
+  });
+  return best;
+}
+
+// Pick landing spot using aim direction within square
+function aimLanding(sq){
+  const cx=sq.cx, cz=sq.cz;
+  const jit=1.4;
+  return { lx:cx+(Math.random()-.5)*jit, lz:cz+(Math.random()-.5)*jit };
+}
+
+function randInSq(sq){
+  const HW=1.70;
+  return {
+    lx: sq.cx + (Math.random()*2-1)*HW,
+    lz: sq.cz + (Math.random()*2-1)*HW,
+  };
+}
+
+function handlePass(power=1){
+  // W in TOSSED phase = lob: send tossed ball in a high arc to random square
+  if(phase==='TOSSED'){
+    const targets=SQ.filter(s=>!s.isPlayer);
+    const target=targets[Math.floor(Math.random()*targets.length)];
+    const {lx,lz}=randInSq(target);
+    const sx=ball.pos.x, sy=ball.pos.y, sz=ball.pos.z;
+    // High lob: bigger arc height than normal
+    const lobArc = ARC_H * 1.6;
+    const ddx=lx-sx, ddz=lz-sz;
+    const hDist=Math.max(0.1,Math.hypot(ddx,ddz));
+    const vy=Math.sqrt(2*GRAV*(lobArc+Math.max(0,sy-BALL_R)));
+    const disc=vy*vy+2*GRAV*(sy-BALL_R);
+    const tFlight=(vy+Math.sqrt(Math.max(0,disc)))/GRAV;
+    const vH=hDist/tFlight;
+    ball.vel.set(ddx/hDist*vH, vy, ddz/hDist*vH);
+    ball.bounces=0; ball.targetSq=target.id; ball.fromSq=PLAYER_SQ;
+    ball.aiTimer=-1; ball.landed=false; ball.inFlight=true; ball.isSuper=false;
+    PSQ.animState='hitting'; PSQ.hitTimer=0.40;
+    PSQ.charGroup.rotation.y=Math.atan2(lx-sx, lz-sz);
+    target.charTarget.set(lx,lz); target.animState='catching';
+    addSuperCharge();
+    phase='PLAYING';
+    setButtons('none');
+    return;
+  }
+  if(phase!=='SERVE' && phase!=='PLAYER_CATCH') return;
+  const target=aimTarget();
+
+  // Ball starts at ground where it's sitting
+  const bx=ball.pos.x, bz=ball.pos.z;
+  // Player walks behind ball and kicks — shoot from just above ground at ball pos
+  const hy = LEG_H + BODY_H * 0.88;  // hand height
+  const {lx,lz}=aimLanding(target);
+  const v=computeShot(bx, hy, bz, lx, lz);
+  ball.pos.set(bx, hy, bz);
+  ball.vel.set(v.vx*power,v.vy*power,v.vz*power);
+  ball.bounces=0; ball.targetSq=target.id; ball.fromSq=PLAYER_SQ; ball.aiTimer=-1; ball.landed=false; ball.inFlight=true; ball.isSuper=false;
+  PSQ.animState='hitting'; PSQ.hitTimer=0.40;
+  PSQ.charGroup.rotation.y=Math.atan2(lx-bx, lz-bz);
+  target.charTarget.set(lx,lz); target.animState='catching';
+  addSuperCharge();
+  phase='PLAYING';
+  setButtons('none');
+}
+
+function handleToss(power=1){
+  if(phase!=='SERVE' && phase!=='PLAYER_CATCH') return;
+
+  // Toss from ball's current ground position (player ran up to it)
+  const bx=ball.pos.x, bz=ball.pos.z;
+  const isSuperReady = superCharge >= SUPER_MAX;
+  const tossHeight = isSuperReady ? TOSS_H * 2.4 : TOSS_H;
+  ball.pos.set(bx, BALL_R, bz);
+  ball.vel.set(0, Math.sqrt(2*GRAV*tossHeight)*power, 0);
+  ball.bounces=0; ball.aiTimer=-1; ball.landed=false; ball.inFlight=true; ball.isSuper=false;
+  phase='TOSSED';
+  setButtons('smash');
+  PSQ.animState='hitting'; PSQ.hitTimer=0.25;
+}
+
+// Smash: direct flat shot — ball goes straight from start to target with no arc
+function computeSmash(sx,sy,sz,tx,tz){
+  const ddx=tx-sx, ddz=tz-sz;
+  const hDist=Math.max(0.1,Math.hypot(ddx,ddz));
+  // Solve for vy that lands at BALL_R height: sy + vy*t - 0.5*g*t^2 = BALL_R
+  // We want the shortest (fastest-descending) positive-time solution
+  // Use a fixed fast horizontal speed and derive vy
+  const fastH = 14.0; // fast horizontal speed
+  const tFlight = hDist / fastH;
+  // vy needed: sy + vy*t - 0.5*g*t^2 = BALL_R  =>  vy = (BALL_R - sy + 0.5*g*t^2) / t
+  const vy = (BALL_R - sy + 0.5*GRAV*tFlight*tFlight) / tFlight;
+  return {vx:ddx/hDist*fastH, vy, vz:ddz/hDist*fastH};
+}
+
+function execSmash(isSuperJump, power=1){
+  const target=aimTarget();
+
+  // 20% chance to miss — ball goes to a RANDOM spot in a RANDOM other square
+  let {lx,lz}=randInSq(target);
+  let smashTarget=target;
+  if(Math.random()<0.20){
+    const missTargets=SQ.filter(s=>!s.isPlayer && s.id!==target.id);
+    smashTarget=missTargets[Math.floor(Math.random()*missTargets.length)];
+    const miss=randInSq(smashTarget);
+    lx=miss.lx; lz=miss.lz;
+  }
+
+  // Start from ball's actual position (no teleport).
+  // onBounce already ignores bounces in fromSq, so own-square bounce is skipped.
+  const sx=ball.pos.x, sy=ball.pos.y, sz=ball.pos.z;
+  const ddx=lx-sx, ddz=lz-sz, hDist=Math.max(0.1,Math.hypot(ddx,ddz));
+
+  // Super jump smash: extra-fast shot; normal smash: tight arc
+  let smashVel;
+  if(isSuperJump){
+    // Super smash: even faster horizontal, same straight-line approach
+    const superH = 22.0;
+    const tF2 = hDist / superH;
+    const vy2 = (BALL_R - sy + 0.5*GRAV*tF2*tF2) / tF2;
+    smashVel={vx:ddx/hDist*superH, vy:vy2, vz:ddz/hDist*superH};
+  } else {
+    smashVel=computeSmash(sx,sy,sz,lx,lz);
+  }
+
+  ball.vel.set(smashVel.vx*power, smashVel.vy*power, smashVel.vz*power);
+  ball.bounces=0; ball.targetSq=smashTarget.id; ball.fromSq=PLAYER_SQ;
+  ball.aiTimer=-1; ball.landed=false; ball.inFlight=true; ball.isSuper=false;
+
+  PSQ.animState='hitting'; PSQ.hitTimer=isSuperJump?0.65:0.40;
+  PSQ.charGroup.rotation.y=Math.atan2(lx-PSQ.charPos.x, lz-PSQ.charPos.y);
+  target.charTarget.set(lx,lz); target.animState='catching';
+
+  addSuperCharge();
+  phase='PLAYING';
+  setButtons('none');
+}
+
+function handleSmash(power=1){
+  if(phase!=='TOSSED') return;
+  if(doSuperSmash()) return;
+
+  const isSuperToss = superCharge >= SUPER_MAX;
+
+  if(isSuperToss){
+    // Jump up to ball, then smash when reaching apex
+    const ballH = ball.pos.y - BALL_R;
+    const jumpDur = Math.sqrt(2*ballH/GRAV) * 1.1; // time to rise to ball height
+    jump.active   = true;
+    jump.t        = 0;
+    jump.duration = jumpDur;
+    jump.startY   = 0;
+    jump.peakY    = ballH * 0.92; // character rises to near ball height
+    // Delay smash execution until jump apex
+    setTimeout(()=>{
+      if(phase==='TOSSED') execSmash(true, power);
+    }, jumpDur * 900); // slightly before full duration
+  } else {
+    execSmash(false, power);
+  }
+}
+
+// ══════════════════════════════════════════════════════
+// SUPER SMASH
+// ══════════════════════════════════════════════════════
+const superFillEl  = document.getElementById('super-fill');
+const superWrapEl  = document.getElementById('super-wrap');
+const superLabelEl = document.getElementById('super-label');
+
+function updateSuperBar(){
+  const pct = Math.min(superCharge / SUPER_MAX * 100, 100);
+  superFillEl.style.width = pct + '%';
+  if(superCharge >= SUPER_MAX){
+    superWrapEl.classList.add('ready');
+    superLabelEl.style.color = '#F1C40F';
+    superLabelEl.textContent = '⚡ SUPER KLAR! ⚡';
+  } else {
+    superWrapEl.classList.remove('ready');
+    superLabelEl.style.color = 'rgba(255,255,255,.45)';
+    superLabelEl.textContent = 'SUPER SMASH ' + superCharge + '/' + SUPER_MAX;
+  }
+}
+
+function addSuperCharge(){
+  if(superCharge >= SUPER_MAX) return;
+  superCharge++;
+  updateSuperBar();
+}
+
+function doSuperSmash(){
+  if(superCharge < SUPER_MAX) return false;
+  // Super smash: hit ALL opponent squares simultaneously
+  const targets = SQ.filter(s=>!s.isPlayer);
+  const mainTarget = targets[Math.floor(Math.random()*targets.length)];
+  const sx=ball.pos.x, sy=ball.pos.y, sz=ball.pos.z;
+  const rawDx=mainTarget.cx-PSQ.cx, rawDz=mainTarget.cz-PSQ.cz;
+  const rawDist=Math.hypot(rawDx,rawDz);
+  const ux=rawDx/Math.max(rawDist,0.01), uz=rawDz/Math.max(rawDist,0.01);
+  const startX=PSQ.cx+ux*2.05, startZ=PSQ.cz+uz*2.05;
+  const {lx,lz}=randInSq(mainTarget);
+  const dist2=Math.hypot(lx-startX,lz-startZ);
+  const finalLx=startX+ux*Math.max(dist2,1.5);
+  const finalLz=startZ+uz*Math.max(dist2,1.5);
+  // Extra-powerful smash: vy=-10
+  const ddx=finalLx-startX, ddz=finalLz-startZ;
+  const hDist=Math.max(0.1,Math.hypot(ddx,ddz));
+  const vy=-10;
+  const disc=vy*vy+2*GRAV*(sy-BALL_R);
+  const tFlight=(-vy+Math.sqrt(Math.max(0,disc)))/GRAV;
+  const vH=hDist/Math.max(0.05,tFlight);
+  ball.pos.set(startX,sy,startZ);
+  ball.vel.set(ddx/hDist*vH, vy, ddz/hDist*vH);
+  ball.bounces=0; ball.targetSq=mainTarget.id; ball.fromSq=PLAYER_SQ;
+  ball.landed=false; ball.inFlight=true; ball.aiTimer=-1; ball.isSuper=true;
+  PSQ.animState='hitting'; PSQ.hitTimer=0.55;
+  PSQ.charGroup.rotation.y=Math.atan2(finalLx-sx,finalLz-sz);
+  mainTarget.charTarget.set(lx,lz); mainTarget.animState='catching';
+  superCharge=0; updateSuperBar();
+  btnS.classList.remove('super');
+  phase='PLAYING'; setButtons('none');
+  return true;
+}
+
+// ══════════════════════════════════════════════════════
+// SQUARE HIT DETECTION
+// ══════════════════════════════════════════════════════
+function sqAt(x,z){
+  for(const s of SQ) if(Math.abs(x-s.cx)<2.0 && Math.abs(z-s.cz)<2.0) return s.id;
+  return -1;
+}
+
+function onBounce(){
+  if(phase!=='PLAYING') return;
+
+  if(ball.inFlight){
+    // ── First bounce: validate landing ───────────────
+    ball.inFlight = false;
+    const sqId = sqAt(ball.pos.x, ball.pos.z);
+
+    // Rule 1: landed outside court = sender loses
+    if(sqId < 0){
+      intermission(`⚠️ ${SQ[ball.fromSq].name}\nsendte ballen ut av banen!`, ball.fromSq);
+      return;
+    }
+
+    // Rule 2: landed in sender's own square = sender loses
+    if(sqId === ball.fromSq){
+      intermission(`🔴 ${SQ[ball.fromSq].name}\nskjøt inn i sin egen rute!`, ball.fromSq);
+      return;
+    }
+
+    // Landed in wrong square
+    if(sqId !== ball.targetSq){
+      intermission(`⚠️ ${SQ[ball.fromSq].name}\nbommet på ruten!`, ball.fromSq);
+      return;
+    }
+
+        // Valid landing — mark so second bounce = loss
+    ball.landed = true;
+
+    if(SQ[sqId].isPlayer){
+      // Super smash: 25% catch, 75% ball keeps bouncing — player must hit before 2nd bounce
+      if(ball.isSuper && Math.random() > 0.25){
+        // Don't freeze, don't auto-lose — let double-bounce rule handle it
+        phase='PLAYER_CATCH';
+        setButtons('toss');
+        return;
+      }
+      const behindDx = PSQ.charHome.x - ball.pos.x;
+      const behindDz = PSQ.charHome.y - ball.pos.z;
+      const behindLen = Math.max(0.01, Math.hypot(behindDx, behindDz));
+      const pX2 =  behindDz / behindLen;
+      const pZ2 = -behindDx / behindLen;
+      PSQ.charTarget.set(
+        ball.pos.x + (behindDx/behindLen)*0.9 + pX2*0.45,
+        ball.pos.z + (behindDz/behindLen)*0.9 + pZ2*0.45
+      );
+      PSQ.animState='catching';
+      phase='PLAYER_CATCH';
+      setButtons('toss');
+    } else {
+      // Super smash: 25% chance AI catches, 75% ball keeps bouncing (double-bounce = loss)
+      if(ball.isSuper && Math.random() > 0.25){
+        // Let ball bounce freely — double-bounce in updateBall will trigger the loss
+        ball.aiTimer = -1; // no AI response
+        return;
+      }
+      ball.vel.set(0,0,0);
+      ball.pos.y = BALL_R;
+      ball.aiTimer = AI_DLY_MIN + Math.random()*AI_DLY_MAX;
+    }
+  }
+}
+
+function doAiHit(fromId){
+  const others=SQ.filter(s=>s.id!==fromId);
+  const target=Math.random()<.62
+    ? SQ[PLAYER_SQ]
+    : others[Math.floor(Math.random()*others.length)];
+
+  // Place AI char behind ball, facing target
+  const hitX = ball.pos.x, hitZ = ball.pos.z;
+  const ai = SQ[fromId];
+  const bhdDx = ai.charHome.x - hitX, bhdDz = ai.charHome.y - hitZ;
+  const bhdLen = Math.max(0.01, Math.hypot(bhdDx,bhdDz));
+  ai.charPos.set(hitX + bhdDx/bhdLen*0.5, hitZ + bhdDz/bhdLen*0.5);
+  ai.charGroup.position.set(ai.charPos.x, 0, ai.charPos.y);
+  ai.charGroup.rotation.y=Math.atan2(target.charPos.x-hitX, target.charPos.y-hitZ);
+
+  // Increment smash charge counter for this AI
+  ai.smashCharge = Math.min((ai.smashCharge||0) + 1, SUPER_MAX);
+
+  // Can only smash if charged to SUPER_MAX (20 hits), then 18% roll
+  if(ai.smashCharge >= SUPER_MAX && Math.random() < 0.18){
+    ai.smashCharge = 0; // reset after use
+    // Toss straight up, then smash after short delay via nested timer
+    ball.pos.set(hitX, BALL_R, hitZ);
+    ball.vel.set(0, Math.sqrt(2*GRAV*TOSS_H), 0);
+    ball.bounces=0; ball.aiTimer=-1; ball.landed=false; ball.inFlight=false;
+    ai.animState='hitting'; ai.hitTimer=0.25;
+    // Schedule smash once ball is near apex
+    const tApex = Math.sqrt(2*TOSS_H/GRAV);
+    ball.aiTimer = tApex * 0.85; // smash just before apex
+    ball.targetSq = target.id; ball.fromSq = fromId;
+    // Mark that this AI is doing a smash-toss so aiTimer fires smash instead of pass
+    ai._smashPending = { target, fromId };
+    phase='PLAYING';
+    return;
+  }
+
+  // Normal kick from foot height
+  const hy = LEG_H + BODY_H * 0.88;  // hand height
+  ball.pos.set(hitX, hy, hitZ);
+  // 10% chance AI misses — shoot into a random wrong square
+  let actualTarget, {lx,lz} = randInSq(target);
+  let actualTargetSq = target.id;
+  if(Math.random() < 0.10){
+    const wrongOptions = SQ.filter(s=>s.id!==fromId && s.id!==target.id);
+    const wrongTarget = wrongOptions[Math.floor(Math.random()*wrongOptions.length)];
+    const miss = randInSq(wrongTarget);
+    lx = miss.lx; lz = miss.lz;
+    actualTargetSq = wrongTarget.id;
+    wrongTarget.charTarget.set(lx,lz); wrongTarget.animState='catching';
+  } else {
+    target.charTarget.set(lx,lz); target.animState='catching';
+  }
+  const v=computeShot(hitX, hy, hitZ, lx, lz);
+  ball.vel.set(v.vx, v.vy, v.vz);
+  ball.bounces=0; ball.targetSq=actualTargetSq; ball.fromSq=fromId; ball.aiTimer=-1; ball.landed=false; ball.inFlight=true; ball.isSuper=false;
+
+  SQ[fromId].animState='hitting'; SQ[fromId].hitTimer=0.40;
+  phase='PLAYING';
+}
+
+// ══════════════════════════════════════════════════════
+// BALL UPDATE
+// ══════════════════════════════════════════════════════
+function updateBall(dt){
+  ball.vel.y-=GRAV*dt;
+  ball.pos.x+=ball.vel.x*dt;
+  ball.pos.y+=ball.vel.y*dt;
+  ball.pos.z+=ball.vel.z*dt;
+
+  if(ball.pos.y<=BALL_R){
+    ball.pos.y=BALL_R;
+
+    if(phase==='TOSSED'){
+      // Player failed to smash in time — toss fell down
+      ball.vel.set(0,0,0);
+      intermission('💨 For sent!\nDu smasha ikke ballen.', PLAYER_SQ);
+      return;
+    }
+
+    if(ball.landed && Math.abs(ball.vel.y) > 0.45){
+      // Ball was already landed and is now falling again = double bounce = loss
+      ball.vel.y = Math.abs(ball.vel.y) * BOUNCE;
+      ball.vel.x *= .93; ball.vel.z *= .93;
+      const sqId2 = sqAt(ball.pos.x, ball.pos.z);
+      const loser = sqId2 >= 0 ? sqId2 : ball.targetSq;
+      ball.landed = false;
+      intermission(SQ[loser].name + ' fikk dobbeltsprett!', loser);
+      return;
+    }
+    if(Math.abs(ball.vel.y)>0.45){
+      ball.vel.y=Math.abs(ball.vel.y)*BOUNCE;
+      ball.vel.x*=.93; ball.vel.z*=.93;
+      ball.bounces++;
+      onBounce();
+    } else {
+      ball.vel.set(0,0,0);
+    }
+  }
+
+  // AI timer
+  if(ball.aiTimer>0){
+    ball.aiTimer-=dt;
+    if(ball.aiTimer<=0){
+      ball.aiTimer=-1;
+      // Check if any AI has a pending smash
+      const smasher = SQ.find(s=>s._smashPending);
+      if(smasher){
+        const {target,fromId} = smasher._smashPending;
+        delete smasher._smashPending;
+        // Start smash OUTSIDE AI's square (same fix as player smash)
+        const sy=ball.pos.y;
+        const {lx,lz}=randInSq(target);
+        const rawDx=lx-SQ[fromId].cx, rawDz=lz-SQ[fromId].cz;
+        const rawDist=Math.hypot(rawDx,rawDz);
+        const ux=rawDx/Math.max(rawDist,0.01), uz=rawDz/Math.max(rawDist,0.01);
+        // Project start point 2.05 units outside AI square centre → clears own square
+        const sx=SQ[fromId].cx+ux*2.05, sz=SQ[fromId].cz+uz*2.05;
+        const finalLx=sx+ux*Math.max(Math.hypot(lx-sx,lz-sz),1.5);
+        const finalLz=sz+uz*Math.max(Math.hypot(lx-sx,lz-sz),1.5);
+        const v=computeSmash(sx,sy,sz,finalLx,finalLz);
+        ball.pos.set(sx,sy,sz);
+        ball.vel.set(v.vx,v.vy,v.vz);
+        ball.bounces=0; ball.targetSq=target.id; ball.fromSq=fromId; ball.landed=false; ball.inFlight=true; ball.isSuper=true;
+        smasher.animState='hitting'; smasher.hitTimer=0.40;
+        target.charTarget.set(lx,lz); target.animState='catching';
+      } else {
+        doAiHit(ball.targetSq);
+      }
+    }
+  }
+
+  // Visual
+  ballMesh.rotation.x+=ball.vel.z*dt*3.5;
+  ballMesh.rotation.z-=ball.vel.x*dt*3.5;
+  ballMesh.position.copy(ball.pos);
+  const h=ball.pos.y-BALL_R, sc=Math.max(.18,1-h*.22);
+  blob.scale.set(sc,sc,1); blobMat.opacity=Math.max(.03,.2*sc);
+  blob.position.set(ball.pos.x,.072,ball.pos.z);
+}
+
+// ══════════════════════════════════════════════════════
+// CHARACTER ANIMATION
+// ══════════════════════════════════════════════════════
+function lr(obj,axis,t,s){ obj.rotation[axis]=THREE.MathUtils.lerp(obj.rotation[axis],t,s); }
+
+function updateChars(dt, now){
+  // When ball is in player's square, track a point 1.1 units BEHIND the ball
+  if(phase==='PLAYER_CATCH'){
+    const sqId=sqAt(ball.pos.x, ball.pos.z);
+    if(sqId===PLAYER_SQ){
+      const bdx = PSQ.charHome.x - ball.pos.x;
+      const bdz = PSQ.charHome.y - ball.pos.z;
+      const blen = Math.max(0.01, Math.hypot(bdx, bdz));
+      // perpendicular (right side) to avoid body clipping through ball
+      const perpX =  bdz / blen;
+      const perpZ = -bdx / blen;
+      const BEHIND = 0.9; // behind ball
+      const SIDE   = 0.45; // to the side
+      const HW = 1.75;
+      PSQ.charTarget.set(
+        Math.max(PSQ.cx-HW, Math.min(PSQ.cx+HW, ball.pos.x + (bdx/blen)*BEHIND + perpX*SIDE)),
+        Math.max(PSQ.cz-HW, Math.min(PSQ.cz+HW, ball.pos.z + (bdz/blen)*BEHIND + perpZ*SIDE))
+      );
+    }
+  }
+
+  SQ.forEach(sq=>{
+    if(!sq.charGroup) return;
+    const cp=sq.charPos, tp=sq.charTarget;
+    const dx=tp.x-cp.x, dz=tp.y-cp.y;
+    const dist=Math.hypot(dx,dz);
+    const moving=dist>0.03;
+
+    if(moving){
+      const mv=Math.min(CHAR_SPEED*dt,dist);
+      cp.x+=dx/dist*mv; cp.y+=dz/dist*mv;
+      if(!sq.isPlayer) sq.charGroup.rotation.y=Math.atan2(dx,dz);
+      sq.walkPhase+=dt*9.5;
+      const sw=Math.sin(sq.walkPhase);
+      sq.lHip.rotation.x= sw*.62; sq.rHip.rotation.x=-sw*.62;
+      if(sq.animState!=='catching'&&sq.animState!=='hitting'){
+        sq.lSh.rotation.x=-sw*.42; sq.rSh.rotation.x= sw*.42;
+        sq.lEl.rotation.x=Math.max(0.1, sw*.28+.20);
+        sq.rEl.rotation.x=Math.max(0.1,-sw*.28+.20);
+      }
+    } else {
+      cp.x=tp.x; cp.y=tp.y;
+      if(!sq.isPlayer) sq.charGroup.position.y=Math.sin(now*.0018+sq.id*1.3)*.012;
+    // Player jump animation
+    if(sq.isPlayer){
+      if(jump.active){
+        jump.t += dt;
+        const p = Math.min(jump.t/jump.duration, 1);
+        // Parabolic arc: sin(p*PI) gives 0→peak→0
+        sq.charGroup.position.y = jump.peakY * Math.sin(p*Math.PI);
+        // Arms fly overhead during jump
+        lr(sq.rSh,'x',-2.2,dt*12); lr(sq.lSh,'x',-1.8,dt*10);
+        lr(sq.rEl,'x', 0.2,dt*12); lr(sq.lEl,'x', 0.3,dt*10);
+        if(jump.t >= jump.duration){ jump.active=false; sq.charGroup.position.y=0; }
+      } else {
+        sq.charGroup.position.y = Math.sin(now*.0018+sq.id*1.3)*.012;
+      }
+    }
+      lr(sq.lHip,'x',0,dt*6); lr(sq.rHip,'x',0,dt*6);
+    }
+
+    sq.charGroup.position.x=cp.x;
+    sq.charGroup.position.z=cp.y;
+
+    // Arm state
+    if(sq.animState==='catching'){
+      lr(sq.lSh,'x',-1.22,dt*8); lr(sq.rSh,'x',-1.22,dt*8);
+      lr(sq.lEl,'x', 0.65,dt*8); lr(sq.rEl,'x', 0.65,dt*8);
+    } else if(sq.animState==='hitting'){
+      sq.hitTimer-=dt;
+      lr(sq.rSh,'x',-2.4,dt*22); lr(sq.rEl,'x',0.15,dt*22);
+      lr(sq.lSh,'x', 0.6,dt*12);
+      if(sq.hitTimer<=0){ sq.animState='idle'; if(!sq.isPlayer) sq.charTarget.copy(sq.charHome); }
+    } else if(!moving){
+      lr(sq.lSh,'x',0.18,dt*4); lr(sq.rSh,'x',0.18,dt*4);
+      lr(sq.lEl,'x',0.25,dt*4); lr(sq.rEl,'x',0.25,dt*4);
+    }
+
+    if(sq.ring) sq.ring.material.opacity=.48+Math.sin(now*.003)*.24;
+  });
+}
+
+// ══════════════════════════════════════════════════════
+// GAME LOGIC
+// ══════════════════════════════════════════════════════
+function resetRound(){
+  // Return player to home
+  PSQ.charPos.copy(PSQ.charHome);
+  PSQ.charTarget.copy(PSQ.charHome);
+  PSQ.charGroup.position.set(PSQ.charHome.x,0,PSQ.charHome.y);
+
+  // Serve pose
+  PSQ.rSh.rotation.x=-1.45; PSQ.rEl.rotation.x=0.55; PSQ.animState='idle';
+
+  // AI go home
+  SQ.forEach(sq=>{ if(!sq.isPlayer){ sq.charTarget.copy(sq.charHome); sq.animState='idle'; sq.smashCharge=0; } });
+
+  // Ball to King's hand
+  const kingSqReset = SQ[ranks[0]];
+  kingSqReset.handMarker.getWorldPosition(_wp);
+  ball.pos.copy(_wp); ball.vel.set(0,0,0);
+  ball.bounces=0; ball.targetSq=-1; ball.fromSq=-1; ball.aiTimer=-1; ball.landed=false; ball.inFlight=false; ball.isSuper=false;
+  ballMesh.position.copy(ball.pos);
+  blob.position.set(ball.pos.x,.072,ball.pos.z);
+}
+
+function startServe(){
+  const kingSqId = ranks[0]; // rank 0 = King
+  if(SQ[kingSqId].isPlayer){
+    // Player is King — show serve UI as normal
+    phase='SERVE';
+    setButtons('toss');
+    showMsg('Du er King! Tap for å serve 👑');
+  } else {
+    // AI is King — serve automatically after short delay
+    phase='SERVING_AI';
+    showMsg(SQ[kingSqId].name + ' server...');
+    setButtons('none');
+    setTimeout(()=>{
+      if(phase!=='SERVING_AI') return;
+      hideMsg();
+      // King AI shoots to a random opponent
+      const king = SQ[kingSqId];
+      const targets = SQ.filter(s=>s.id!==kingSqId);
+      const target = targets[Math.floor(Math.random()*targets.length)];
+      const {lx,lz} = randInSq(target);
+      king.handMarker.getWorldPosition(_wp);
+      const hy = _wp.y;
+      ball.pos.set(_wp.x, hy, _wp.z);
+      const v = computeShot(_wp.x, hy, _wp.z, lx, lz);
+      ball.vel.set(v.vx, v.vy, v.vz);
+      ball.bounces=0; ball.targetSq=target.id; ball.fromSq=kingSqId;
+      ball.aiTimer=-1; ball.landed=false; ball.inFlight=true; ball.isSuper=false;
+      king.animState='hitting'; king.hitTimer=0.40;
+      king.charGroup.rotation.y=Math.atan2(lx-king.charPos.x, lz-king.charPos.y);
+      target.charTarget.set(lx,lz); target.animState='catching';
+      phase='PLAYING';
+      // If ball lands on player, enable controls
+      if(SQ[target.id].isPlayer) setButtons('toss');
+    }, 1200);
+  }
+}
+
+function intermission(text, loserSqId){
+  phase='INTERMISSION'; ball.aiTimer=-1;
+  SQ.forEach(sq=>{ delete sq._smashPending; }); // clear any pending AI smash
+  jump.active=false; // cancel any jump in progress
+  setButtons('none');
+
+  if(SQ[loserSqId].isPlayer){
+    lives--; updateLives();
+    if(lives<=0){
+      showMsg('😞 GAME OVER!\nDu gikk ut av spillet!');
+      setTimeout(()=>location.reload(),3500);
+      phase='GAMEOVER'; return;
+    }
+  }
+
+  ranks=[...ranks.filter(id=>id!==loserSqId), loserSqId];
+  updateUI();
+
+  const pr=pRank(), isMe=SQ[loserSqId].isPlayer;
+  showMsg(`${pr===0?'👑 DU ER KONGEN!\n':''}${text}\n${isMe?'😬':'✨'} Du er nå ${RANK_NAMES[pr]}`);
+
+  setTimeout(()=>{
+    if(phase==='GAMEOVER') return;
+    hideMsg(); resetRound();
+    showReadyScreen('NESTE RUNDE', 'ER DU KLAR?');
+  },2800);
+}
+
+// ══════════════════════════════════════════════════════
+// UI HELPERS
+// ══════════════════════════════════════════════════════
+const msgEl   = document.getElementById('msg');
+const livesEl = document.getElementById('lives');
+const ranksEl = document.getElementById('ranks');
+const rankLbl = document.getElementById('rank-label');
+const btnW    = document.getElementById('btnW');
+const btnA    = document.getElementById('btnA');
+const btnS    = document.getElementById('btnS');
+
+const showMsg = t  => { msgEl.textContent=t; msgEl.classList.remove('hidden'); };
+const hideMsg = () => msgEl.classList.add('hidden');
+
+function setButtons(state){
+  btnW.classList.remove('active','disabled');
+  btnA.classList.remove('active','disabled');
+  btnS.classList.remove('active','disabled','super');
+  if(state==='toss')  { btnW.classList.add('active'); btnA.classList.add('active'); btnS.classList.add('disabled'); }
+  if(state==='smash') {
+    btnW.classList.add('active');
+    if(superCharge>=SUPER_MAX){ btnS.classList.add('super'); }
+    else                      { btnS.classList.add('active'); }
+    btnA.classList.add('disabled');
+  }
+  if(state==='none')  { btnW.classList.add('disabled'); btnA.classList.add('disabled'); btnS.classList.add('disabled'); }
+}
+
+function updateLives(){ livesEl.textContent='❤️'.repeat(lives)+'🖤'.repeat(3-lives); }
+function updateUI(){
+  ranksEl.innerHTML='';
+  ranks.forEach((sqId,ri)=>{
+    const sq=SQ[sqId], div=document.createElement('div');
+    div.className=`badge${sq.isPlayer?' me':''}`;
+    if(sq.isPlayer) div.style.borderColor=sq.hex;
+    div.innerHTML=`<div class="dot" style="background:${sq.hex}"></div><span>${sq.name}${sq.isPlayer?' <b>(deg)</b>':''}</span>`;
+    ranksEl.appendChild(div);
+  });
+  rankLbl.textContent=`RANG ${pRank()+1} AV 4`;
+}
+
+// Action button event listeners
+btnW.addEventListener('pointerdown',e=>{ e.stopPropagation(); if(!chargeKey) startCharge('W'); });
+btnW.addEventListener('pointerup',e=>{ e.stopPropagation(); if(chargeKey==='W') releaseCharge(); });
+btnA.addEventListener('pointerdown',e=>{ e.stopPropagation(); handleToss(); });
+btnS.addEventListener('pointerdown',e=>{ e.stopPropagation(); if(!chargeKey) startCharge('S'); });
+btnS.addEventListener('pointerup',e=>{ e.stopPropagation(); if(chargeKey==='S') releaseCharge(); });
+
+// ══════════════════════════════════════════════════════
+// RESIZE
+// ══════════════════════════════════════════════════════
+function onResize(){
+  const wrap = document.getElementById('canvas-wrap');
+  const W = wrap.clientWidth  || innerWidth;
+  const H = wrap.clientHeight || innerHeight;
+  if(W < 10 || H < 10){ setTimeout(onResize, 100); return; } // retry if hidden
+  renderer.setSize(W, H, false);
+  fitCameraToCourt();
+}
+window.addEventListener('resize', onResize);
+setTimeout(onResize, 50);
+
+// ══════════════════════════════════════════════════════
+// RENDER LOOP
+// ══════════════════════════════════════════════════════
+let lastTime=0;
+(function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-lastTime)*.001,.05); lastTime=now;
+  if(!gameActive) return;
+  if(chargeKey){ chargeTime=Math.min(chargeTime+dt,MAX_CHARGE); powerBarEl.style.width=(chargeTime/MAX_CHARGE*100)+'%'; } // don't update while in menu
+
+  // Aim X — show when player has possession, point toward mouse
+  const showAim = (phase==='SERVE'||phase==='PLAYER_CATCH'||phase==='TOSSED') && gameActive;
+  aimGroup.visible = showAim;
+  if(showAim){
+    // Raycast mouse onto ground plane to get 3D aim point
+    _raycaster.setFromCamera(_mouse, camera);
+    const _hit = new THREE.Vector3();
+    _raycaster.ray.intersectPlane(_aimPlane, _hit);
+    // Angle from player to mouse hit point
+    const adx = _hit.x - PSQ.charPos.x;
+    const adz = _hit.z - PSQ.charPos.y;
+    if(Math.hypot(adx,adz) > 0.2) aimAngle = Math.atan2(adx, adz);
+    // Place X between player and mouse, 0.8 units out
+    const dist = Math.min(Math.hypot(adx,adz), 1.8);
+    const ux = adx/Math.max(Math.hypot(adx,adz),.01);
+    const uz = adz/Math.max(Math.hypot(adx,adz),.01);
+    aimGroup.position.x = PSQ.charPos.x + ux*dist;
+    aimGroup.position.z = PSQ.charPos.y + uz*dist;
+    aimGroup.rotation.z = aimAngle;
+  }
+
+  // Ball tracks King's hand in SERVE phase
+  if(phase==='SERVE'||phase==='SERVING_AI'){
+    const kingSq=SQ[ranks[0]];
+    kingSq.handMarker.getWorldPosition(_wp);
+    ballMesh.position.copy(_wp); ball.pos.copy(_wp);
+    blob.scale.set(.55,.55,1); blobMat.opacity=.10;
+    blob.position.set(_wp.x,.072,_wp.z);
+    if(kingSq.isPlayer) kingSq.rSh.rotation.z=Math.sin(now*.0022)*.07-.08;
+  }
+
+  // Ball physics active in these phases
+  if(phase==='TOSSED'||phase==='PLAYING'||phase==='PLAYER_CATCH'){
+    updateBall(dt);
+  }
+
+  updatePlayerMovement(dt);
+  updateChars(dt,now);
+  renderer.render(scene,camera);
+})(0);
+
+// ══════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// MAIN MENU + CHARACTER CUSTOMIZATION
+// ══════════════════════════════════════════════════════════════
+const menuStartBtn = document.getElementById('menu-start-btn');
+const custOptions  = document.getElementById('cust-options');
+const previewCanvas= document.getElementById('preview-canvas');
+
+// Customisation state
+const playerStyle = {
+  hair:      0,   // index into options
+  haircolor: 0,
+  shirt:     0,
+  pants:     0,
+  shoes:     0,
+  gloves:    0,
+};
+
+const CUST_OPTIONS = {
+  hair: [
+    {label:'✂️', name:'Kort'},
+    {label:'🦱', name:'Krøll'},
+    {label:'💇', name:'Langt'},
+    {label:'🎩', name:'Caps'},
+    {label:'🪮', name:'Flette'},
+    {label:'🌀', name:'Krøllete'},
+    {label:'☁️', name:'Fluffy'},
+  ],
+  haircolor: [
+    {color:'#2C1810', name:'Brun'},
+    {color:'#F4C430', name:'Blond'},
+    {color:'#111111', name:'Svart'},
+    {color:'#CC2200', name:'Rød'},
+    {color:'#4477CC', name:'Blå'},
+    {color:'#AA44AA', name:'Lilla'},
+    {color:'#AAAAAA', name:'Grå'},
+  ],
+  shirt: [
+    {color:'#27AE60', name:'Grønn'},
+    {color:'#E74C3C', name:'Rød'},
+    {color:'#3498DB', name:'Blå'},
+    {color:'#F39C12', name:'Gul'},
+    {color:'#FFFFFF', name:'Hvit'},
+    {color:'#111111', name:'Svart'},
+    {color:'#9B59B6', name:'Lilla'},
+  ],
+  pants: [
+    {color:'#1A252F', name:'Mørk'},
+    {color:'#3B5998', name:'Jeans'},
+    {color:'#888888', name:'Grå'},
+    {color:'#111111', name:'Svart'},
+    {color:'#8B5E2A', name:'Brun'},
+    {color:'#FFFFFF', name:'Hvit'},
+  ],
+  shoes: [
+    {color:'#FFFFFF', name:'Hvit'},
+    {color:'#111111', name:'Svart'},
+    {color:'#E74C3C', name:'Rød'},
+    {color:'#F39C12', name:'Oransje'},
+    {color:'#3498DB', name:'Blå'},
+    {color:'#2ECC71', name:'Grønn'},
+  ],
+  gloves: [
+    {color:null, name:'Ingen'},
+    {color:'#FFFFFF', name:'Hvit'},
+    {color:'#111111', name:'Svart'},
+    {color:'#E74C3C', name:'Rød'},
+    {color:'#3498DB', name:'Blå'},
+    {color:'#F1C40F', name:'Gul'},
+  ],
+};
+
+let activeTab = 'hair';
+
+function renderCustOptions(tab){
+  custOptions.innerHTML = '';
+  CUST_OPTIONS[tab].forEach((opt, i)=>{
+    const btn = document.createElement('div');
+    btn.className = 'c-opt' + (playerStyle[tab]===i?' selected':'');
+    if(opt.color){
+      btn.style.background = opt.color;
+      btn.style.boxShadow = `0 0 0 1px rgba(0,0,0,.3)`;
+    } else {
+      btn.style.background = '#222';
+      btn.textContent = '✕';
+      btn.style.color = 'rgba(255,255,255,.6)';
+      btn.style.fontSize = '16px';
+    }
+    if(opt.label){ btn.textContent = opt.label; btn.style.background='#222'; btn.style.fontSize='20px'; }
+    btn.title = opt.name;
+    btn.addEventListener('pointerdown', ()=>{
+      playerStyle[tab] = i;
+      renderCustOptions(tab);
+      updatePreview();
+    });
+    custOptions.appendChild(btn);
+  });
+}
+
+document.querySelectorAll('.c-tab').forEach(tab=>{
+  tab.addEventListener('pointerdown', ()=>{
+    document.querySelectorAll('.c-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    activeTab = tab.dataset.tab;
+    renderCustOptions(activeTab);
+  });
+});
+
+// ── Mini Three.js preview ─────────────────────────────────
+const prevRenderer = new THREE.WebGLRenderer({ canvas:previewCanvas, antialias:true, alpha:true });
+prevRenderer.setPixelRatio(Math.min(devicePixelRatio,2));
+prevRenderer.setSize(260,420);
+prevRenderer.shadowMap.enabled = true;
+prevRenderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const prevScene  = new THREE.Scene();
+prevScene.background = null;
+const prevCamera = new THREE.PerspectiveCamera(46, 260/420, 0.1, 50);
+prevCamera.position.set(0, 1.4, 4.2);
+prevCamera.lookAt(0, 1.5, 0);
+
+prevScene.add(new THREE.AmbientLight(0xffffff,0.7));
+const prevSun = new THREE.DirectionalLight(0xFFF2CC,1.6);
+prevSun.position.set(4,8,5); prevSun.castShadow=true; prevScene.add(prevSun);
+const prevFill = new THREE.DirectionalLight(0xC8E0FF,0.4);
+prevFill.position.set(-3,3,-2);
+prevScene.add(prevFill);
+
+// Podium
+function makePodium(){
+  const mat = new THREE.MeshPhongMaterial({color:0xF1C40F,shininess:60});
+  const top = new THREE.Mesh(new THREE.BoxGeometry(1.4,.18,1.4),mat);
+  top.position.y=.09; top.receiveShadow=true; prevScene.add(top);
+  const base = new THREE.Mesh(new THREE.BoxGeometry(1.55,.32,1.55),
+    new THREE.MeshPhongMaterial({color:0xC9A227,shininess:30}));
+  base.position.y=-.07; base.receiveShadow=true; prevScene.add(base);
+  // "1" text via geometry approximation
+  const n = new THREE.Mesh(new THREE.BoxGeometry(.08,.38,.08),
+    new THREE.MeshPhongMaterial({color:0xFFF9E0}));
+  n.position.set(0,.47,0.62); prevScene.add(n);
+}
+makePodium();
+
+// Floor
+const prevFloor = new THREE.Mesh(new THREE.PlaneGeometry(8,8),
+  new THREE.MeshLambertMaterial({color:0x9A9C9A}));
+prevFloor.rotation.x=-Math.PI/2; prevFloor.position.y=-0.23; prevFloor.receiveShadow=true;
+prevScene.add(prevFloor);
+
+// Build preview character
+const PBODY_H=0.56, PLEG_H=0.46, PUARM_H=0.26, PFARM_H=0.26, PHEAD_R=0.155;
+let prevChar = null;
+const prevMeshes = {};
+
+function buildPreviewChar(){
+  if(prevChar){ prevScene.remove(prevChar); }
+  prevChar = new THREE.Group();
+
+  const shirtCol = new THREE.Color(CUST_OPTIONS.shirt[playerStyle.shirt].color);
+  const pantCol  = new THREE.Color(CUST_OPTIONS.pants[playerStyle.pants].color);
+  const shoeCol  = new THREE.Color(CUST_OPTIONS.shoes[playerStyle.shoes].color);
+  const hairCol  = new THREE.Color(CUST_OPTIONS.haircolor[playerStyle.haircolor].color);
+  const sk       = 0xFFCE9E; // skin
+  const gOpt     = CUST_OPTIONS.gloves[playerStyle.gloves];
+  const hcol     = gOpt.color ? new THREE.Color(gOpt.color) : sk;
+
+  function add(geo,col,x,y,z){
+    const mesh=new THREE.Mesh(geo,new THREE.MeshPhongMaterial({color:col,shininess:24}));
+    mesh.position.set(x||0,y||0,z||0); mesh.castShadow=true; prevChar.add(mesh); return mesh;
+  }
+
+  const FH=0.18,SH=0.48,TH=0.50,BH=0.62,NH=0.09,HR=0.160,SW=0.22;
+
+  // Feet
+  [-0.095,0.095].forEach(ox=>{
+    add(new THREE.BoxGeometry(.16,.07,.25),shoeCol,ox,.035,.04);
+  });
+
+  // Legs
+  [-0.095,0.095].forEach(ox=>{
+    add(new THREE.CylinderGeometry(.050,.060,SH+TH,10),pantCol,ox,FH+(SH+TH)/2,0);
+  });
+
+  const hipY=FH+SH+TH;
+  add(new THREE.CylinderGeometry(.175,.175,.08,12),pantCol,0,hipY+.04,0);
+
+  const torsoY=hipY+.10;
+  add(new THREE.CylinderGeometry(.20,.18,BH,12),shirtCol,0,torsoY+BH/2,0);
+
+  const shoulderY=torsoY+BH;
+
+  // Arms
+  const UAH=0.27,FAH=0.24;
+  [-1,1].forEach((s,si)=>{
+    const g=new THREE.Group();
+    g.position.set(s*SW, shoulderY-0.06, 0);
+    g.rotation.z=s*0.12;
+    // Upper arm
+    const ua=new THREE.Mesh(new THREE.CylinderGeometry(.060,.052,UAH,8),new THREE.MeshPhongMaterial({color:shirtCol}));
+    ua.position.y=-UAH/2; ua.castShadow=true; g.add(ua);
+    // Forearm — straight continuation, no bend
+    const fa=new THREE.Mesh(new THREE.CylinderGeometry(.052,.044,FAH,8),new THREE.MeshPhongMaterial({color:sk}));
+    fa.position.y=-UAH-FAH/2; fa.castShadow=true; g.add(fa);
+    // Hand
+    const hm=new THREE.Mesh(new THREE.SphereGeometry(.062,10,10),new THREE.MeshPhongMaterial({color:hcol}));
+    hm.scale.set(1,.8,1.1); hm.position.y=-UAH-FAH-.04; g.add(hm);
+    prevChar.add(g);
+  });
+
+  // Neck
+  add(new THREE.CylinderGeometry(.063,.078,NH,10),sk,0,shoulderY+NH/2,0);
+
+  // Head
+  const headY=shoulderY+NH+HR*.9;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(HR,18,14),new THREE.MeshPhongMaterial({color:sk,shininess:14}));
+  head.scale.set(1,1.05,.96); head.position.set(0,headY,0); head.castShadow=true; prevChar.add(head);
+
+  // Jaw
+  const jaw=new THREE.Mesh(new THREE.SphereGeometry(HR*.55,10,8),new THREE.MeshPhongMaterial({color:sk}));
+  jaw.scale.set(1.18,.60,.92); jaw.position.set(0,headY-HR*.52,HR*.1); prevChar.add(jaw);
+
+  // Eyes
+  [-1,1].forEach(s=>{
+    const ex=s*HR*.38,ey=headY+HR*.13,ez=HR*.88;
+    add(new THREE.SphereGeometry(HR*.155,10,10),0xF8F8F5,ex,ey,ez).scale.set(1,.82,.65);
+    add(new THREE.SphereGeometry(HR*.088,8,8),0x3D6080,ex,ey,ez+HR*.07);
+    add(new THREE.SphereGeometry(HR*.05,7,7),0x080808,ex,ey,ez+HR*.10);
+    const brow=new THREE.Mesh(new THREE.BoxGeometry(HR*.30,.025,HR*.06),new THREE.MeshPhongMaterial({color:hairCol}));
+    brow.position.set(ex,ey+HR*.22,ez-.01); brow.rotation.z=s*.08; prevChar.add(brow);
+  });
+
+  // Nose
+  const nose=add(new THREE.SphereGeometry(HR*.095,8,8),0xECB490,0,headY-HR*.06,HR*.92);
+  nose.scale.set(.85,1.08,.65);
+  [-1,1].forEach(s=>{ const n=add(new THREE.SphereGeometry(HR*.062,7,7),0xE0A880,s*HR*.09,headY-HR*.15,HR*.88); n.scale.set(.9,.7,.6); });
+
+  // Mouth
+  [-1,0,1].forEach(s=>{ add(new THREE.SphereGeometry(HR*.04,6,6),0xB06040,s*HR*.13,headY-HR*.31-Math.abs(s)*HR*.055,HR*.88); });
+
+  // Ears
+  [-1,1].forEach(s=>{ const e=add(new THREE.SphereGeometry(HR*.17,10,10),sk,s*HR*.98,headY-HR*.04,0); e.scale.set(.42,.60,.28); });
+
+  // Hair
+  const hStyle=playerStyle.hair;
+  if(hStyle===0||hStyle===1||hStyle===2){
+    const hairH=new THREE.Mesh(new THREE.SphereGeometry(HR*1.06,16,8,0,Math.PI*2,0,Math.PI*.42),new THREE.MeshPhongMaterial({color:hairCol}));
+    hairH.position.set(0,headY+HR*.08,0); hairH.castShadow=true; prevChar.add(hairH);
+    if(hStyle===1){
+      for(let a=0;a<6;a++){
+        const b=new THREE.Mesh(new THREE.SphereGeometry(.052,6,6),new THREE.MeshPhongMaterial({color:hairCol}));
+        b.position.set(Math.cos(a)*HR*.82,headY+HR*.50,Math.sin(a)*HR*.82); prevChar.add(b);
+      }
+    }
+    if(hStyle===2){
+      const t=new THREE.Mesh(new THREE.CylinderGeometry(.065,.038,.44,8),new THREE.MeshPhongMaterial({color:hairCol}));
+      t.position.set(0,headY-.20,-.08); prevChar.add(t);
+    }
+  } else if(hStyle===3){
+    const brim=new THREE.Mesh(new THREE.CylinderGeometry(HR*1.35,HR*1.35,.05,16),new THREE.MeshPhongMaterial({color:hairCol}));
+    brim.position.set(0,headY+HR*.38,0); prevChar.add(brim);
+    const top=new THREE.Mesh(new THREE.CylinderGeometry(HR*.94,HR*1.08,.26,16),new THREE.MeshPhongMaterial({color:hairCol}));
+    top.position.set(0,headY+HR*.52,0); prevChar.add(top);
+  } else if(hStyle===4){
+    const hairH=new THREE.Mesh(new THREE.SphereGeometry(HR*1.06,16,8,0,Math.PI*2,0,Math.PI*.42),new THREE.MeshPhongMaterial({color:hairCol}));
+    hairH.position.set(0,headY+HR*.08,0); prevChar.add(hairH);
+    [-1,1].forEach(s=>{
+      const b=new THREE.Mesh(new THREE.CylinderGeometry(.038,.024,.40,6),new THREE.MeshPhongMaterial({color:hairCol}));
+      b.position.set(s*HR*.62,headY-.24,0); prevChar.add(b);
+    });
+  } else if(hStyle===5){
+    const dome=new THREE.Mesh(new THREE.SphereGeometry(HR*1.05,14,8,0,Math.PI*2,0,Math.PI*.42),new THREE.MeshPhongMaterial({color:hairCol}));
+    dome.position.set(0,headY+HR*.08,0); prevChar.add(dome);
+    const dotPos=[[0,1.05,0],[.6,.88,.3],[-.6,.88,.3],[.55,.88,-.3],[-.55,.88,-.3],[0,.88,-.7],[.35,1.0,.6],[-.35,1.0,.6],[.8,.72,0],[-.8,.72,0],[0,.75,.85]];
+    dotPos.forEach(([dx,dy,dz])=>{ const d=new THREE.Mesh(new THREE.SphereGeometry(HR*.10,6,6),new THREE.MeshPhongMaterial({color:hairCol})); d.position.set(dx*HR,headY+dy*HR,dz*HR); prevChar.add(d); });
+  } else if(hStyle===6){
+    const dome6=new THREE.Mesh(new THREE.SphereGeometry(HR*1.05,14,8,0,Math.PI*2,0,Math.PI*.42),new THREE.MeshPhongMaterial({color:hairCol}));
+    dome6.position.set(0,headY+HR*.08,0); prevChar.add(dome6);
+    const am=new THREE.MeshPhongMaterial({color:hairCol});
+    const ap=[];
+    for(let i=0;i<24;i++){ const a=i/24*Math.PI*2; ap.push([Math.cos(a)*HR*1.00,HR*.48,Math.sin(a)*HR*1.00,a,-Math.PI*.32]); }
+    for(let i=0;i<22;i++){ const a=i/22*Math.PI*2; ap.push([Math.cos(a)*HR*.88,HR*.63,Math.sin(a)*HR*.88,a,-Math.PI*.24]); }
+    for(let i=0;i<20;i++){ const a=i/20*Math.PI*2; ap.push([Math.cos(a)*HR*.72,HR*.77,Math.sin(a)*HR*.72,a,-Math.PI*.16]); }
+    for(let i=0;i<16;i++){ const a=i/16*Math.PI*2; ap.push([Math.cos(a)*HR*.54,HR*.89,Math.sin(a)*HR*.54,a,-Math.PI*.08]); }
+    for(let i=0;i<12;i++){ const a=i/12*Math.PI*2; ap.push([Math.cos(a)*HR*.35,HR*1.00,Math.sin(a)*HR*.35,a,-Math.PI*.03]); }
+    for(let i=0;i<8;i++){  const a=i/8*Math.PI*2;  ap.push([Math.cos(a)*HR*.18,HR*1.08,Math.sin(a)*HR*.18,a,0]); }
+    for(let i=0;i<6;i++){  const a=i/6*Math.PI*2;  ap.push([Math.cos(a)*HR*.07,HR*1.13,Math.sin(a)*HR*.07,a,0]); }
+    ap.push([0,HR*1.16,0,0,0],[0,HR*1.10,0,Math.PI*.5,0],[HR*.05,HR*1.14,0,0,Math.PI*.2],[-HR*.05,HR*1.14,0,0,-Math.PI*.2],[0,HR*1.14,HR*.05,Math.PI*.5,Math.PI*.2],[0,HR*1.14,-HR*.05,Math.PI*.5,-Math.PI*.2]);
+    ap.forEach(([x,y,z,ry,rx])=>{
+      const arc=new THREE.Mesh(new THREE.TorusGeometry(HR*.105,HR*.042,4,7,Math.PI),am);
+      arc.position.set(x,headY+y,z); arc.rotation.y=ry; arc.rotation.x=rx; prevChar.add(arc);
+    });
+  }
+
+  prevChar.position.y=0.18;
+  prevScene.add(prevChar);
+}
+
+function updatePreview(){ buildPreviewChar(); }
+buildPreviewChar();
+renderCustOptions('hair');
+
+// Preview render loop
+let prevT=0, prevLoopRunning=true;
+function prevLoop(now){
+  requestAnimationFrame(prevLoop);
+  if(!prevLoopRunning) return;
+  const dt=Math.min((now-prevT)*.001,.05); prevT=now;
+  const pw=previewCanvas.clientWidth, ph=previewCanvas.clientHeight;
+  if(pw>0 && ph>0){
+    prevRenderer.setSize(pw,ph,false);
+    prevCamera.aspect=pw/ph;
+    prevCamera.updateProjectionMatrix();
+  }
+  if(prevChar) prevChar.rotation.y+=dt*0.8;
+  prevRenderer.render(prevScene,prevCamera);
+}
+requestAnimationFrame(prevLoop);
+
+// Avatar / randomise button
+document.getElementById('avatar-btn').addEventListener('pointerdown',()=>{
+  Object.keys(playerStyle).forEach(k=>{
+    playerStyle[k]=Math.floor(Math.random()*CUST_OPTIONS[k].length);
+  });
+  renderCustOptions(activeTab);
+  updatePreview();
+});
+
+menuStartBtn.addEventListener('pointerdown',()=>{
+  prevLoopRunning=false;
+  mainMenu.classList.add('hidden');
+  const ns=document.getElementById('name-screen'); ns.style.display=''; ns.classList.remove('hidden');
+});
+
+// Apply style stub (for future in-game use)
+function applyStyleToIngame(){
+  const sq = PSQ;
+  if(!sq.charGroup) return;
+
+  // Traverse the character group and update material colors
+  const shirtCol = new THREE.Color(CUST_OPTIONS.shirt[playerStyle.shirt].color);
+  const pantCol  = new THREE.Color(CUST_OPTIONS.pants[playerStyle.pants].color);
+  const shoeCol  = new THREE.Color(CUST_OPTIONS.shoes[playerStyle.shoes].color);
+  const hairCol  = new THREE.Color(CUST_OPTIONS.haircolor[playerStyle.haircolor].color);
+  const gOpt     = CUST_OPTIONS.gloves[playerStyle.gloves];
+  const gloveCol = gOpt.color ? new THREE.Color(gOpt.color) : new THREE.Color(0xFFCE9E);
+
+  // Remove old char group and rebuild with custom colors
+  scene.remove(sq.charGroup);
+
+  // Rebuild using buildChar logic but with custom colors
+  const g = new THREE.Group();
+
+  function add(geo,mat,x,y,z){ const m=new THREE.Mesh(geo,mat); m.position.set(x||0,y||0,z||0); m.castShadow=true; m.receiveShadow=true; g.add(m); return m; }
+  function mat(col){ return new THREE.MeshPhongMaterial({color:col,shininess:22}); }
+  const skinMat2 = mat(0xFFCE9E);
+
+  // Shirt / body
+  add(new THREE.CylinderGeometry(.115,.150,BODY_H,16), mat(shirtCol), 0, LEG_H+BODY_H/2, 0);
+  // Head
+  add(new THREE.SphereGeometry(HEAD_R,16,16), skinMat2, 0, LEG_H+BODY_H+HEAD_R*.9, 0);
+  // Hair
+  const hair=new THREE.Mesh(new THREE.SphereGeometry(HEAD_R*1.07,16,8,0,Math.PI*2,0,Math.PI/2),mat(hairCol));
+  hair.position.set(0,LEG_H+BODY_H+HEAD_R*.9,0); hair.castShadow=true; g.add(hair);
+
+  // Legs
+  function mkHip2(ox){
+    const p=new THREE.Group(); p.position.set(ox,LEG_H,0);
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.062,.062,LEG_H,8),mat(pantCol));
+    leg.position.y=-LEG_H/2; leg.castShadow=true; p.add(leg); g.add(p); return p;
+  }
+  sq.lHip=mkHip2(-0.08); sq.rHip=mkHip2(0.08);
+
+  // Arms
+  const shY2=LEG_H+BODY_H*.88;
+  function mkArm2(ox,isRight){
+    const sh=new THREE.Group(); sh.position.set(ox,shY2,0);
+    const ua=new THREE.Mesh(new THREE.CylinderGeometry(.058,.050,UARM_H,8),skinMat2);
+    ua.position.y=-UARM_H/2; ua.castShadow=true; sh.add(ua);
+    const el=new THREE.Group(); el.position.y=-UARM_H; sh.add(el);
+    const fa=new THREE.Mesh(new THREE.CylinderGeometry(.050,.044,FARM_H,8),skinMat2);
+    fa.position.y=-FARM_H/2; fa.castShadow=true; el.add(fa);
+    // Glove on hand
+    const handM=new THREE.Mesh(new THREE.SphereGeometry(.06,8,8),mat(gloveCol));
+    handM.position.set(0,-FARM_H*1.05,0.04); el.add(handM);
+    const hm=new THREE.Object3D(); hm.position.set(0,-FARM_H*1.05,0.06); el.add(hm);
+    g.add(sh);
+    if(isRight){sq.rSh=sh;sq.rEl=el;sq.handMarker=hm;}
+    else       {sq.lSh=sh;sq.lEl=el;}
+    // Shoe color on feet (rough approximation)
+  }
+  mkArm2(-0.22,false); mkArm2(0.22,true);
+
+  // Glow ring
+  const ring=new THREE.Mesh(new THREE.TorusGeometry(.32,.025,8,32),
+    new THREE.MeshBasicMaterial({color:0xFFFFFF,transparent:true,opacity:.7}));
+  ring.rotation.x=-Math.PI/2; ring.position.y=0.02; g.add(ring); sq.ring=ring;
+
+  // Restore position/rotation
+  g.rotation.y=sq.charGroup.rotation.y;
+  g.position.copy(sq.charGroup.position);
+  scene.add(g); sq.charGroup=g;
+
+  // Restore arm defaults
+  sq.lSh.rotation.x=0.18; sq.rSh.rotation.x=0.18;
+  sq.lEl.rotation.x=0.25; sq.rEl.rotation.x=0.25;
+}
+
+// ── Name screen ───────────────────────────────────────────────────
+const nameScreen   = document.getElementById('name-screen');
+const nameStartBtn = document.getElementById('name-start-btn');
+
+const AI_NAMES=['Erik','Jonas','Maja','Sofie','Liam','Noah','Emilie','Oliver','Nora','Lucas','Emma','William','Ingrid','Mathias','Astrid','Henrik','Sigrid','Aleksander','Tuva','Kristoffer','Ida','Magnus','Thea','Andreas','Sara','Tobias','Hanna','Sebastian','Maria','Filip'];
+
+function pickRandom(pool,exclude){
+  const f=pool.filter(n=>!exclude.includes(n));
+  return f[Math.floor(Math.random()*f.length)];
+}
+
+function refreshAiNames(){
+  const used=[];
+  [0,1,3].forEach(i=>{
+    const name=pickRandom(AI_NAMES,used); used.push(name);
+    const inp=document.getElementById('name'+i);
+    if(inp) inp.value=name;
+  });
+}
+refreshAiNames();
+
+document.getElementById('name-back-btn').addEventListener('pointerdown',()=>{
+  nameScreen.style.display='none';
+  mainMenu.classList.remove('hidden');
+  prevLoopRunning=true;
+});
+
+nameStartBtn.addEventListener('pointerdown',()=>{
+  const used=[];
+  SQ.forEach((sq,i)=>{
+    const inp=document.getElementById('name'+i);
+    const val=inp?inp.value.trim():'';
+    if(sq.isPlayer){ sq.name=val||'Meg'; }
+    else { sq.name=val||pickRandom(AI_NAMES,used); used.push(sq.name); }
+  });
+  nameScreen.style.display='none';
+  updateUI(); updateLives();
+  showReadyScreen('FOUR SQUARE 3D','ER DU KLAR?');
+});
+
+// ── Ready overlay ─────────────────────────────────────────────────
+const readyOverlay=document.getElementById('ready-overlay');
+const readyBtn    =document.getElementById('ready-btn');
+const notReadyBtn =document.getElementById('not-ready-btn');
+const readyTitle  =document.getElementById('ready-title');
+const readySub    =document.getElementById('ready-subtitle');
+
+let gameStarted=false;
+
+function showReadyScreen(title,sub){
+  readyTitle.textContent=title; readySub.textContent=sub;
+  readyOverlay.classList.remove('hidden');
+}
+function hideReadyScreen(){ readyOverlay.classList.add('hidden'); }
+
+document.getElementById('ready-back-btn').addEventListener('pointerdown',()=>{
+  readyOverlay.classList.add('hidden');
+  const ns=document.getElementById('name-screen'); ns.style.display=''; ns.classList.remove('hidden');
+});
+
+readyBtn.addEventListener('pointerdown',()=>{
+  gameActive=true;
+  hideReadyScreen();
+  setTimeout(()=>{
+    onResize();
+    applyStyleToIngame();
+    if(!gameStarted){ gameStarted=true; startServe(); }
+    else { startServe(); }
+  },30);
+});
+
+notReadyBtn.addEventListener('pointerdown',()=>{ readySub.textContent='Ta deg god tid... ⏳'; });
+
+// ── Power charge ──────────────────────────────────────────────────
+const powerWrapEl = document.getElementById('power-wrap');
+const powerBarEl  = document.getElementById('power-bar');
+
+function startCharge(key){
+  chargeKey=key; chargeTime=0;
+  powerWrapEl.style.display='block';
+  powerBarEl.style.width='0%';
+}
+
+function releaseCharge(){
+  if(!chargeKey) return;
+  const key=chargeKey; chargeKey=null;
+  powerWrapEl.style.display='none';
+  const power=MIN_POWER+(1-MIN_POWER)*(Math.min(chargeTime,MAX_CHARGE)/MAX_CHARGE);
+  if(key==='W') handlePass(power);
+  if(key==='A') handleToss(power);
+  if(key==='S') handleSmash(power);
+}
+
+// ── Init ──────────────────────────────────────────────────────────
+resetRound();
+updateUI();
+updateLives();
+
+</script>
+</body>
+</html>
