@@ -1,21 +1,36 @@
-name: Auto-merge PRs
+name: Auto-merge claude branches
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - 'claude/**'
 
 permissions:
   contents: write
   pull-requests: write
 
 jobs:
-  auto-merge:
+  create-and-merge:
     runs-on: ubuntu-latest
-    if: startsWith(github.head_ref, 'claude/')
     steps:
-      - name: Merge PR directly
-        run: gh pr merge "$PR_NUMBER" --squash --repo "$REPO"
+      - name: Create PR and merge to main
+        run: |
+          # Create PR
+          PR_URL=$(gh pr create \
+            --repo "$REPO" \
+            --head "$BRANCH" \
+            --base main \
+            --title "Auto-merge: $BRANCH" \
+            --body "Automated PR from $BRANCH" 2>/dev/null || echo "exists")
+
+          # If PR already exists, get its number
+          if [ "$PR_URL" = "exists" ]; then
+            PR_URL=$(gh pr list --repo "$REPO" --head "$BRANCH" --json url -q '.[0].url')
+          fi
+
+          # Merge the PR
+          gh pr merge "$PR_URL" --squash --repo "$REPO"
         env:
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BRANCH: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
