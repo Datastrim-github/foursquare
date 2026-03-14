@@ -282,16 +282,16 @@
       flex:0 0 auto;
       background:#0a0a12;
       border-top:2px solid rgba(255,255,255,.10);
-      display:flex; align-items:center; justify-content:space-between;
-      padding:10px 16px 14px; z-index:10; pointer-events:auto; gap:8px;
+      display:flex; align-items:center; justify-content:center;
+      padding:10px 8px 14px; z-index:10; pointer-events:auto; gap:6px;
     }
-    #ctrl-center { text-align:center; flex:0 0 auto; }
+    #ctrl-center { text-align:center; flex:0 1 auto; min-width:0; }
     #lives       { font-size:20px; letter-spacing:3px; }
     #rank-label  { color:rgba(255,255,255,.55); font-size:10px; letter-spacing:2px; font-weight:600; margin-top:3px; }
 
     /* ── Super smash progress bar ─────────────────── */
     #super-wrap {
-      margin-top:5px; width:120px;
+      margin-top:5px; width:100px;
       background:rgba(255,255,255,.10); border-radius:6px;
       height:8px; overflow:hidden; position:relative;
       border:1px solid rgba(255,255,255,.18);
@@ -330,9 +330,9 @@
     #dpad {
       display:grid;
       grid-template-areas:". u ." "l . r" ". d .";
-      grid-template-columns:50px 50px 50px;
-      grid-template-rows:50px 50px 50px;
-      gap:3px; flex-shrink:0;
+      grid-template-columns:42px 42px 42px;
+      grid-template-rows:42px 42px 42px;
+      gap:2px; flex-shrink:0;
     }
     #dpad button {
       background:rgba(255,255,255,.12);
@@ -347,15 +347,15 @@
     #dbtn-r { grid-area:r; } #dbtn-d { grid-area:d; }
 
     /* ── Action buttons ──────────────────────────── */
-    #actions { display:flex; flex-direction:row; gap:10px; align-items:center; flex-shrink:0; }
+    #actions { display:flex; flex-direction:row; gap:6px; align-items:center; flex-shrink:0; }
     .abtn {
-      width:68px; height:68px; border-radius:50%;
+      width:58px; height:58px; border-radius:50%;
       border:3px solid rgba(255,255,255,.22);
-      color:#fff; font-size:11px; font-weight:900; letter-spacing:1px;
+      color:#fff; font-size:10px; font-weight:900; letter-spacing:1px;
       display:flex; flex-direction:column; align-items:center; justify-content:center;
       cursor:pointer; -webkit-tap-highlight-color:transparent; touch-action:none;
       transition:transform .08s, box-shadow .08s, opacity .2s;
-      line-height:1.2; text-align:center;
+      line-height:1.2; text-align:center; flex-shrink:0;
     }
     .abtn .key { font-size:19px; font-weight:900; }
     .abtn.disabled { opacity:.22; pointer-events:none; }
