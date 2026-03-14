@@ -13,8 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.head_ref, 'claude/')
     steps:
-      - name: Enable auto-merge
-        run: gh pr merge "$PR_URL" --auto --squash
+      - name: Merge PR directly
+        run: gh pr merge "$PR_NUMBER" --squash --repo "$REPO"
         env:
-          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
