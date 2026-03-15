@@ -980,9 +980,21 @@ function randInSq(sq){
   };
 }
 
+// Snap player character to near the ball so they don't hit from far away
+function snapPlayerToBall(){
+  const bx=ball.pos.x, bz=ball.pos.z;
+  const dx=PSQ.charHome.x-bx, dz=PSQ.charHome.y-bz;
+  const len=Math.max(0.01,Math.hypot(dx,dz));
+  const nx=bx+dx/len*0.5, nz=bz+dz/len*0.5;
+  PSQ.charPos.set(nx,nz);
+  PSQ.charTarget.set(nx,nz);
+  PSQ.charGroup.position.set(nx,0,nz);
+}
+
 function handlePass(power=1){
   // W in TOSSED phase = lob: send tossed ball in a high arc to random square
   if(phase==='TOSSED'){
+    snapPlayerToBall();
     const targets=SQ.filter(s=>!s.isPlayer);
     const target=targets[Math.floor(Math.random()*targets.length)];
     const {lx,lz}=randInSq(target);
@@ -1007,6 +1019,7 @@ function handlePass(power=1){
     return;
   }
   if(phase!=='SERVE' && phase!=='PLAYER_CATCH') return;
+  snapPlayerToBall();
   const target=aimTarget();
 
   // Ball starts at ground where it's sitting
@@ -1028,6 +1041,7 @@ function handlePass(power=1){
 
 function handleToss(power=1){
   if(phase!=='SERVE' && phase!=='PLAYER_CATCH') return;
+  snapPlayerToBall();
 
   // Toss from ball's current ground position (player ran up to it)
   const bx=ball.pos.x, bz=ball.pos.z;
@@ -1056,6 +1070,7 @@ function computeSmash(sx,sy,sz,tx,tz){
 }
 
 function execSmash(isSuperJump, power=1){
+  snapPlayerToBall();
   const target=aimTarget();
 
   // 20% chance to miss — ball goes to a RANDOM spot in a RANDOM other square
@@ -1249,7 +1264,11 @@ function onBounce(){
       }
       ball.vel.set(0,0,0);
       ball.pos.y = BALL_R;
-      ball.aiTimer = AI_DLY_MIN + Math.random()*AI_DLY_MAX;
+      // Delay based on distance so AI walks to ball before hitting
+      const aiChar = SQ[sqId];
+      const walkDist = Math.hypot(aiChar.charPos.x - ball.pos.x, aiChar.charPos.y - ball.pos.z);
+      const walkTime = walkDist / CHAR_SPEED;
+      ball.aiTimer = Math.max(AI_DLY_MIN, walkTime + 0.08);
     }
   }
 }
@@ -1260,13 +1279,9 @@ function doAiHit(fromId){
     ? SQ[PLAYER_SQ]
     : others[Math.floor(Math.random()*others.length)];
 
-  // Place AI char behind ball, facing target
+  // AI should already be near the ball (walked there during aiTimer delay)
   const hitX = ball.pos.x, hitZ = ball.pos.z;
   const ai = SQ[fromId];
-  const bhdDx = ai.charHome.x - hitX, bhdDz = ai.charHome.y - hitZ;
-  const bhdLen = Math.max(0.01, Math.hypot(bhdDx,bhdDz));
-  ai.charPos.set(hitX + bhdDx/bhdLen*0.5, hitZ + bhdDz/bhdLen*0.5);
-  ai.charGroup.position.set(ai.charPos.x, 0, ai.charPos.y);
   ai.charGroup.rotation.y=Math.atan2(target.charPos.x-hitX, target.charPos.y-hitZ);
 
   // Increment smash charge counter for this AI
