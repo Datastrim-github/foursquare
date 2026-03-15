@@ -1348,6 +1348,13 @@ function updateBall(dt){
       ball.vel.x*=.93; ball.vel.z*=.93;
       ball.bounces++;
       onBounce();
+    } else if(ball.inFlight && phase==='PLAYING'){
+      // Flat smash: ball reached ground with very low vertical velocity
+      // Still count as a landing so onBounce() triggers game logic (AI pickup etc.)
+      ball.vel.y=0;
+      ball.vel.x*=.5; ball.vel.z*=.5;
+      ball.bounces++;
+      onBounce();
     } else {
       ball.vel.set(0,0,0);
     }
