@@ -876,7 +876,7 @@ const referee = {group:null, lSh:null, rSh:null, lEl:null, rEl:null, lHip:null, 
   whistle.position.set(0.06,legH+bodyH+headR*0.3,headR*0.8);
   g.add(whistle);
 
-  g.position.set(-4.5,0,4.5);
+  g.position.set(-4.2,0,0);
   g.rotation.y=Math.PI/2; // face the court
   scene.add(g);
   referee.group=g;
@@ -1574,7 +1574,7 @@ function updateChars(dt, now){
     referee.group.position.y=Math.sin(now*.0015)*.015;
     // Track ball with head rotation (look left/right)
     const bx=ball.pos.x, bz=ball.pos.z;
-    const refX=-4.5, refZ=4.5;
+    const refX=-4.2, refZ=0;
     const lookAngle=Math.atan2(bx-refX, bz-refZ);
     referee.group.rotation.y=THREE.MathUtils.lerp(referee.group.rotation.y, lookAngle, dt*3);
     // Arms behind back
