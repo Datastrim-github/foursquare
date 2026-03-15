@@ -1414,8 +1414,8 @@ function updateBall(dt){
       return;
     }
 
-    if(ball.landed && Math.abs(ball.vel.y) > 0.45){
-      // Ball was already landed and is now falling again = double bounce = loss
+    if(ball.landed){
+      // Ball was already landed and is now hitting ground again = double bounce = loss
       ball.vel.y = Math.abs(ball.vel.y) * BOUNCE;
       ball.vel.x *= .93; ball.vel.z *= .93;
       const sqId2 = sqAt(ball.pos.x, ball.pos.z);
