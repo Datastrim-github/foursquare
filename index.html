@@ -816,6 +816,72 @@ SQ.forEach(buildChar);
 // Player: right arm raised holding ball
 PSQ.rSh.rotation.x=-1.45; PSQ.rEl.rotation.x=0.55;
 
+// ── Referee on left side of court ──────────────────────────────
+const referee = {group:null, lSh:null, rSh:null, lEl:null, rEl:null, lHip:null, rHip:null, headMesh:null};
+(function buildReferee(){
+  const g=new THREE.Group();
+  const refScale=1.15; // slightly taller
+  const bodyH=BODY_H*refScale, legH=LEG_H*refScale, headR=HEAD_R*refScale;
+  const shirtMat=mkMat(0x111111); // black shirt
+  const stripeMat=mkMat(0xFFFFFF); // white stripes
+  const refPantMat=mkMat(0x0A0A0A);
+
+  function add(geo,mat,x,y,z){
+    const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z);
+    m.castShadow=true; m.receiveShadow=true; g.add(m); return m;
+  }
+
+  // Body with black shirt
+  add(new THREE.CylinderGeometry(.13,.165,bodyH,16), shirtMat, 0, legH+bodyH/2, 0);
+  // White stripe on chest
+  add(new THREE.CylinderGeometry(.135,.135,bodyH*0.08,16), stripeMat, 0, legH+bodyH*0.65, 0);
+  add(new THREE.CylinderGeometry(.135,.135,bodyH*0.08,16), stripeMat, 0, legH+bodyH*0.45, 0);
+
+  // Head
+  referee.headMesh=add(new THREE.SphereGeometry(headR,16,16), skinMat, 0, legH+bodyH+headR*.9, 0);
+  const hair=new THREE.Mesh(new THREE.SphereGeometry(headR*1.07,16,8,0,Math.PI*2,0,Math.PI/2),hairMat);
+  hair.position.set(0,legH+bodyH+headR*.9,0); hair.castShadow=true; g.add(hair);
+  // Cap (flat disc on top)
+  const capMat=mkMat(0x111111);
+  const cap=new THREE.Mesh(new THREE.CylinderGeometry(headR*1.1,headR*1.2,0.04,16),capMat);
+  cap.position.set(0,legH+bodyH+headR*1.7,0); cap.castShadow=true; g.add(cap);
+  const brim=new THREE.Mesh(new THREE.CylinderGeometry(headR*0.3,headR*1.5,0.02,16),capMat);
+  brim.position.set(0,legH+bodyH+headR*1.68,headR*0.4); brim.castShadow=true; g.add(brim);
+
+  // Legs
+  function mkHip(ox){
+    const p=new THREE.Group(); p.position.set(ox,legH,0);
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.068,.068,legH,8),refPantMat);
+    leg.position.y=-legH/2; leg.castShadow=true; p.add(leg); g.add(p); return p;
+  }
+  referee.lHip=mkHip(-0.09); referee.rHip=mkHip(0.09);
+
+  // Arms
+  const shY=legH+bodyH*.88;
+  function mkArm(ox,isRight){
+    const sh=new THREE.Group(); sh.position.set(ox,shY,0);
+    const ua=new THREE.Mesh(new THREE.CylinderGeometry(.062,.054,UARM_H*refScale,8),skinMat);
+    ua.position.y=-UARM_H*refScale/2; ua.castShadow=true; sh.add(ua);
+    const el=new THREE.Group(); el.position.y=-UARM_H*refScale; sh.add(el);
+    const fa=new THREE.Mesh(new THREE.CylinderGeometry(.054,.048,FARM_H*refScale,8),skinMat);
+    fa.position.y=-FARM_H*refScale/2; fa.castShadow=true; el.add(fa);
+    g.add(sh);
+    if(isRight){referee.rSh=sh;referee.rEl=el;}
+    else       {referee.lSh=sh;referee.lEl=el;}
+  }
+  mkArm(-0.24,false); mkArm(0.24,true);
+
+  // Whistle (small sphere near mouth)
+  const whistle=new THREE.Mesh(new THREE.SphereGeometry(0.03,8,8),mkMat(0xC0C0C0));
+  whistle.position.set(0.06,legH+bodyH+headR*0.3,headR*0.8);
+  g.add(whistle);
+
+  g.position.set(-5.8,0,0);
+  g.rotation.y=Math.PI/2; // face the court
+  scene.add(g);
+  referee.group=g;
+})();
+
 // ══════════════════════════════════════════════════════
 // GAME STATE
 // ══════════════════════════════════════════════════════
@@ -1501,6 +1567,25 @@ function updateChars(dt, now){
 
     if(sq.ring) sq.ring.material.opacity=.48+Math.sin(now*.003)*.24;
   });
+
+  // ── Referee animation ──
+  if(referee.group){
+    // Idle bob
+    referee.group.position.y=Math.sin(now*.0015)*.015;
+    // Track ball with head rotation (look left/right)
+    const bx=ball.pos.x, bz=ball.pos.z;
+    const refX=-5.8, refZ=0;
+    const lookAngle=Math.atan2(bx-refX, bz-refZ);
+    referee.group.rotation.y=THREE.MathUtils.lerp(referee.group.rotation.y, lookAngle, dt*3);
+    // Arms behind back
+    lr(referee.lSh,'x',0.5,dt*3); lr(referee.rSh,'x',0.5,dt*3);
+    lr(referee.lEl,'x',0.9,dt*3); lr(referee.rEl,'x',0.9,dt*3);
+    // Occasionally blow whistle (raise right arm) during intermission
+    if(phase==='INTERMISSION'){
+      lr(referee.rSh,'x',-1.0,dt*6);
+      lr(referee.rEl,'x',1.4,dt*6);
+    }
+  }
 }
 
 // ══════════════════════════════════════════════════════
