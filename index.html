@@ -509,7 +509,7 @@ const BALL_R      = 0.13;
 const CHAR_SPEED  = 3.6;
 const PLAYER_SPD  = 3.0;
 
-const BODY_H = 0.56, LEG_H = 0.46, UARM_H = 0.26, FARM_H = 0.26, HEAD_R = 0.155;
+const BODY_H = 0.52, LEG_H = 0.40, UARM_H = 0.24, FARM_H = 0.24, HEAD_R = 0.22;
 
 const SQ = [
   { id:0, name:'King ♛',   cx: 2, cz:-2, hex:'#E74C3C', color:0xE74C3C, isPlayer:false },
@@ -540,16 +540,16 @@ renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled       = true;
 renderer.shadowMap.type          = THREE.PCFSoftShadowMap;
 renderer.toneMapping             = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure     = 1.12;
+renderer.toneMappingExposure     = 1.25;
 renderer.physicallyCorrectLights = true;
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xB8D4E8); // overcast school-day sky
-scene.fog        = new THREE.FogExp2(0xC5DAE8,0.028);
+scene.background = new THREE.Color(0x87CEEB); // bright sunny sky
+scene.fog        = new THREE.FogExp2(0x9DD5ED,0.018);
 
 const camera = new THREE.PerspectiveCamera(60,innerWidth/innerHeight,0.1,200);
-camera.position.set(0,11.5,16.0);
-camera.lookAt(0,0,-0.5);
+camera.position.set(0,10.5,15.0);
+camera.lookAt(0,0,-0.8);
 
 // Auto-fit camera so the 4 court corners fill the viewport exactly
 const _v3 = new THREE.Vector3();
@@ -564,13 +564,13 @@ function fitCameraToCourt(){
   camera.updateProjectionMatrix();
 
   // Binary-search zoom: pull camera along its direction until all corners are inside NDC [-0.96, 0.96]
-  const dir   = new THREE.Vector3(0,11.5,16.0).normalize();
-  const target= new THREE.Vector3(0,0,-0.5);
+  const dir   = new THREE.Vector3(0,10.5,15.0).normalize();
+  const target= new THREE.Vector3(0,0,-0.8);
   let dist = 5;
   for(let step=8; step>0.01; step*=0.5){
     camera.position.copy(dir).multiplyScalar(dist).add(new THREE.Vector3(0,0,0));
     // recompute so dir is from origin toward old camera pos (fixed angle)
-    camera.position.set(0, dist*11.5/Math.hypot(11.5,16), dist*16/Math.hypot(11.5,16));
+    camera.position.set(0, dist*10.5/Math.hypot(10.5,15), dist*15/Math.hypot(10.5,15));
     camera.lookAt(target);
     camera.updateMatrixWorld();
     const pm = new THREE.Matrix4().multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
@@ -584,93 +584,175 @@ function fitCameraToCourt(){
   camera.updateMatrixWorld();
 }
 
-// Lighting
-scene.add(new THREE.AmbientLight(0xE8EDF2,0.7));
-scene.add(new THREE.HemisphereLight(0xC8DAEC,0x8899AA,0.5));
-const sun = new THREE.DirectionalLight(0xF0EEDD,1.4);
-sun.position.set(7,15,9); sun.castShadow=true;
-Object.assign(sun.shadow.camera,{near:.5,far:80,left:-20,right:20,top:20,bottom:-20});
-sun.shadow.mapSize.set(2048,2048); sun.shadow.bias=-0.0005;
+// Lighting – warm afternoon sun, vibrant and colorful
+scene.add(new THREE.AmbientLight(0xFFF5E6,0.65));
+scene.add(new THREE.HemisphereLight(0x87CEEB,0x8B7355,0.6));
+const sun = new THREE.DirectionalLight(0xFFF0CC,1.8);
+sun.position.set(6,18,8); sun.castShadow=true;
+Object.assign(sun.shadow.camera,{near:.5,far:80,left:-22,right:22,top:22,bottom:-22});
+sun.shadow.mapSize.set(4096,4096); sun.shadow.bias=-0.0003;
+sun.shadow.radius=2;
 scene.add(sun);
-const fill=new THREE.DirectionalLight(0xCCDDEE,0.4); fill.position.set(-8,4,-6); scene.add(fill);
+const fill=new THREE.DirectionalLight(0xB0D4F1,0.5); fill.position.set(-8,6,-6); scene.add(fill);
+const rim=new THREE.DirectionalLight(0xFFE4B5,0.3); rim.position.set(0,3,12); scene.add(rim);
 
 // ══════════════════════════════════════════════════════
 // COURT
 // ══════════════════════════════════════════════════════
-// Schoolyard asphalt ground
-const gnd=new THREE.Mesh(new THREE.PlaneGeometry(80,80),new THREE.MeshPhongMaterial({color:0x888A88,shininess:4}));
+// Schoolyard ground – textured asphalt with canvas noise
+const gndCv=document.createElement('canvas'); gndCv.width=gndCv.height=512;
+const gndCtx=gndCv.getContext('2d');
+gndCtx.fillStyle='#6B6F6B'; gndCtx.fillRect(0,0,512,512);
+for(let i=0;i<8000;i++){
+  const v=Math.random()*30-15;
+  gndCtx.fillStyle=`rgba(${128+v|0},${130+v|0},${128+v|0},0.4)`;
+  gndCtx.fillRect(Math.random()*512,Math.random()*512,Math.random()*4+1,Math.random()*4+1);
+}
+const gndTex=new THREE.CanvasTexture(gndCv);
+gndTex.wrapS=gndTex.wrapT=THREE.RepeatWrapping; gndTex.repeat.set(12,12);
+const gnd=new THREE.Mesh(new THREE.PlaneGeometry(80,80),new THREE.MeshStandardMaterial({map:gndTex,roughness:0.92,metalness:0.0,color:0x7A7E7A}));
 gnd.rotation.x=-Math.PI/2; gnd.position.y=-0.01; gnd.receiveShadow=true; scene.add(gnd);
-// Slightly lighter court base
-const asp=new THREE.Mesh(new THREE.BoxGeometry(8.3,.05,8.3),new THREE.MeshPhongMaterial({color:0x9A9C9A,shininess:6}));
-asp.position.y=0.025; asp.receiveShadow=true; scene.add(asp);
+// Court base – slightly raised platform with subtle texture
+const aspCv=document.createElement('canvas'); aspCv.width=aspCv.height=256;
+const aspCtx=aspCv.getContext('2d');
+aspCtx.fillStyle='#8A8E8A'; aspCtx.fillRect(0,0,256,256);
+for(let i=0;i<3000;i++){
+  aspCtx.fillStyle=`rgba(160,162,160,${Math.random()*0.3})`;
+  aspCtx.fillRect(Math.random()*256,Math.random()*256,Math.random()*3+1,Math.random()*3+1);
+}
+const aspTex=new THREE.CanvasTexture(aspCv);
+aspTex.wrapS=aspTex.wrapT=THREE.RepeatWrapping; aspTex.repeat.set(3,3);
+const asp=new THREE.Mesh(new THREE.BoxGeometry(8.6,.08,8.6),new THREE.MeshStandardMaterial({map:aspTex,roughness:0.85,metalness:0.0,color:0x9A9E9A}));
+asp.position.y=0.04; asp.receiveShadow=true; scene.add(asp);
 
-// ── School building backdrop (behind court) ──────────
+// ── School building backdrop (behind court) – upgraded ──────────
 function addBuilding(x,z,w,h,d,col){
-  const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshPhongMaterial({color:col,shininess:8}));
+  const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),new THREE.MeshStandardMaterial({color:col,roughness:0.75,metalness:0.02}));
   b.position.set(x,h/2,z); b.castShadow=true; b.receiveShadow=true; scene.add(b); return b;
 }
-// Main brick building
-addBuilding(0,-16,32,8,2,0xC47C5A);   // main wall
-addBuilding(0,-15.6,32,0.4,2.1,0x8B5A3A); // darker ledge at base
-addBuilding(0,-16,32,0.3,2.1,0x8B5A3A); // roof ledge
+// Main brick building – warmer, richer color
+addBuilding(0,-16,34,9,2.5,0xBB7755);   // main wall
+addBuilding(0,-15.6,34.2,0.5,2.6,0x7A4A32); // darker ledge at base
+addBuilding(0,-16,34.2,0.4,2.6,0x7A4A32); // roof ledge
+// Roof overhang
+const roofMat=new THREE.MeshStandardMaterial({color:0x5A4030,roughness:0.8,metalness:0.1});
+const roof=new THREE.Mesh(new THREE.BoxGeometry(35,0.3,3.5),roofMat);
+roof.position.set(0,9.15,-15.5); roof.castShadow=true; scene.add(roof);
 // Side wings
-addBuilding(-18,-12,4,6,10,0xBF7850);
-addBuilding( 18,-12,4,6,10,0xBF7850);
-// Windows (darker rectangles punched in)
-for(let wx=-12;wx<=12;wx+=4){
-  const win=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.8,0.12),new THREE.MeshPhongMaterial({color:0x6A8EAD,shininess:80,specular:new THREE.Color(0.3,0.4,0.5)}));
-  win.position.set(wx,3.5,-14.96); scene.add(win);
-  const win2=new THREE.Mesh(new THREE.BoxGeometry(1.4,1.8,0.12),new THREE.MeshPhongMaterial({color:0x6A8EAD,shininess:80,specular:new THREE.Color(0.3,0.4,0.5)}));
-  win2.position.set(wx,1.2,-14.96); scene.add(win2);
+addBuilding(-18,-12,4,7,10,0xAA6644);
+addBuilding( 18,-12,4,7,10,0xAA6644);
+// Windows – glass with reflective look + frames
+const winFrameMat=new THREE.MeshStandardMaterial({color:0xEEEEEE,roughness:0.3,metalness:0.4});
+const winGlassMat=new THREE.MeshStandardMaterial({color:0x4488BB,roughness:0.1,metalness:0.6,transparent:true,opacity:0.85});
+for(let wx=-14;wx<=14;wx+=3.5){
+  if(Math.abs(wx)<1.5) continue; // skip door area
+  [3.8,1.5].forEach(wy=>{
+    const frame=new THREE.Mesh(new THREE.BoxGeometry(1.6,2.0,0.08),winFrameMat);
+    frame.position.set(wx,wy,-14.95); scene.add(frame);
+    const glass=new THREE.Mesh(new THREE.BoxGeometry(1.3,1.7,0.06),winGlassMat);
+    glass.position.set(wx,wy,-14.93); scene.add(glass);
+  });
 }
-// Entrance door
-const door=new THREE.Mesh(new THREE.BoxGeometry(2.2,3.4,0.15),new THREE.MeshPhongMaterial({color:0x3D5A6A,shininess:20}));
-door.position.set(0,1.7,-14.94); scene.add(door);
-// "SKOLE" sign above door
-const sign=new THREE.Mesh(new THREE.BoxGeometry(4,0.7,0.18),new THREE.MeshPhongMaterial({color:0xF5E642,shininess:12}));
-sign.position.set(0,5,-14.92); scene.add(sign);
+// Entrance door – double doors
+const doorMat=new THREE.MeshStandardMaterial({color:0x2C4A5C,roughness:0.6,metalness:0.2});
+const doorFrame=new THREE.Mesh(new THREE.BoxGeometry(2.6,3.8,0.1),winFrameMat);
+doorFrame.position.set(0,1.9,-14.95); scene.add(doorFrame);
+[-0.55,0.55].forEach(dx=>{
+  const door=new THREE.Mesh(new THREE.BoxGeometry(1.1,3.4,0.12),doorMat);
+  door.position.set(dx,1.7,-14.92); scene.add(door);
+  // Door handle
+  const handle=new THREE.Mesh(new THREE.SphereGeometry(0.06,6,6),new THREE.MeshStandardMaterial({color:0xCCCC66,roughness:0.2,metalness:0.8}));
+  handle.position.set(dx+(dx>0?-0.3:0.3),1.5,-14.85); scene.add(handle);
+});
+// "SKOLE" sign above door – more prominent
+const signMat=new THREE.MeshStandardMaterial({color:0xF5E642,roughness:0.3,metalness:0.1,emissive:0xF5E642,emissiveIntensity:0.08});
+const sign=new THREE.Mesh(new THREE.BoxGeometry(4.5,0.8,0.2),signMat);
+sign.position.set(0,5.5,-14.9); scene.add(sign);
 
-// ── Fence around yard (chain-link style: thin posts) ─
+// ── Chain-link fence – thicker posts with crossbars and mesh panels ─
+const fenceMat=new THREE.MeshStandardMaterial({color:0x8899AA,roughness:0.3,metalness:0.7});
+const meshMat=new THREE.MeshStandardMaterial({color:0xAABBCC,roughness:0.4,metalness:0.5,transparent:true,opacity:0.25,side:THREE.DoubleSide});
 function fence(x1,z1,x2,z2){
   const dx=x2-x1,dz=z2-z1,len=Math.hypot(dx,dz);
-  const posts=Math.floor(len/1.8);
+  const posts=Math.floor(len/1.5);
   for(let i=0;i<=posts;i++){
     const t=i/posts;
-    const post=new THREE.Mesh(new THREE.CylinderGeometry(.04,.04,2.2,6),
-      new THREE.MeshPhongMaterial({color:0x889988,shininess:30}));
-    post.position.set(x1+dx*t,.9,z1+dz*t); scene.add(post);
+    // Post
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(.045,.045,2.6,8),fenceMat);
+    post.position.set(x1+dx*t,1.3,z1+dz*t); post.castShadow=true; scene.add(post);
+    // Post cap
+    const cap=new THREE.Mesh(new THREE.SphereGeometry(.06,6,4),fenceMat);
+    cap.position.set(x1+dx*t,2.6,z1+dz*t); scene.add(cap);
   }
-  // horizontal rail
-  const rail=new THREE.Mesh(new THREE.CylinderGeometry(.025,.025,len,4),
-    new THREE.MeshPhongMaterial({color:0x778877,shininess:25}));
-  rail.rotation.z=Math.PI/2;
-  rail.rotation.y=Math.atan2(dz,dx);
-  rail.position.set((x1+x2)/2,1.9,(z1+z2)/2); scene.add(rail);
+  // Three horizontal rails
+  [0.5,1.3,2.4].forEach(h=>{
+    const rail=new THREE.Mesh(new THREE.CylinderGeometry(.02,.02,len,6),fenceMat);
+    rail.rotation.z=Math.PI/2;
+    rail.rotation.y=Math.atan2(dz,dx);
+    rail.position.set((x1+x2)/2,h,(z1+z2)/2); scene.add(rail);
+  });
+  // Mesh panel
+  const panel=new THREE.Mesh(new THREE.PlaneGeometry(len,2.2),meshMat);
+  const angle=Math.atan2(dx,dz);
+  panel.rotation.y=angle;
+  panel.position.set((x1+x2)/2,1.3,(z1+z2)/2); scene.add(panel);
 }
 fence(-12,-12,-12, 9);
 fence( 12,-12, 12, 9);
 fence(-12,  9, 12, 9);
 
-// ── Basketball hoop (left side) ───────────────────────
-const poleGeo=new THREE.CylinderGeometry(.1,.1,4.5,8);
-const poleMat=new THREE.MeshPhongMaterial({color:0x999999,shininess:40});
-const pole=new THREE.Mesh(poleGeo,poleMat); pole.position.set(-10,2.25,-5); scene.add(pole);
-const board=new THREE.Mesh(new THREE.BoxGeometry(1.8,1.2,.08),new THREE.MeshPhongMaterial({color:0xFFFFFF,shininess:20}));
-board.position.set(-10,4.6,-5); scene.add(board);
-const rimGeo=new THREE.TorusGeometry(.38,.04,8,16);
-const rim=new THREE.Mesh(rimGeo,new THREE.MeshPhongMaterial({color:0xFF6600,shininess:50}));
-rim.rotation.x=Math.PI/2; rim.position.set(-10,4.0,-4.75); scene.add(rim);
+// ── Basketball hoop (left side) – upgraded ───────────
+const poleMat2=new THREE.MeshStandardMaterial({color:0xAAAAAA,roughness:0.25,metalness:0.7});
+const pole2=new THREE.Mesh(new THREE.CylinderGeometry(.1,.12,5,12),poleMat2);
+pole2.position.set(-10,2.5,-5); pole2.castShadow=true; scene.add(pole2);
+const boardMat=new THREE.MeshStandardMaterial({color:0xFFFFFF,roughness:0.4,metalness:0.1});
+const board=new THREE.Mesh(new THREE.BoxGeometry(1.8,1.2,.1),boardMat);
+board.position.set(-10,5,-5); board.castShadow=true; scene.add(board);
+// Board outline
+const boardOutline=new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,.02),new THREE.MeshStandardMaterial({color:0xFF4400,roughness:0.5}));
+boardOutline.position.set(-10,4.9,-4.94); scene.add(boardOutline);
+const rimGeo2=new THREE.TorusGeometry(.38,.04,12,24);
+const rimMat2=new THREE.MeshStandardMaterial({color:0xFF5500,roughness:0.3,metalness:0.5});
+const brim=new THREE.Mesh(rimGeo2,rimMat2);
+brim.rotation.x=Math.PI/2; brim.position.set(-10,4.3,-4.65); brim.castShadow=true; scene.add(brim);
+// Net (simplified cone)
+const netMat=new THREE.MeshStandardMaterial({color:0xFFFFFF,roughness:0.8,transparent:true,opacity:0.5,side:THREE.DoubleSide});
+const net=new THREE.Mesh(new THREE.CylinderGeometry(.36,.15,.6,12,1,true),netMat);
+net.position.set(-10,3.95,-4.65); scene.add(net);
 
-// ── Benches (right side) ────────────────────────────
+// ── Benches (right side) – polished wood ────────────
+const benchWood=new THREE.MeshStandardMaterial({color:0x9B6B30,roughness:0.65,metalness:0.05});
+const benchMetal=new THREE.MeshStandardMaterial({color:0x555555,roughness:0.35,metalness:0.6});
 function bench(x,z){
-  const seat=new THREE.Mesh(new THREE.BoxGeometry(2.8,.12,.7),new THREE.MeshPhongMaterial({color:0x8B5E2A,shininess:10}));
-  seat.position.set(x,.6,z); scene.add(seat);
-  [-1.1,1.1].forEach(ox=>{
-    const leg=new THREE.Mesh(new THREE.BoxGeometry(.12,.6,.65),new THREE.MeshPhongMaterial({color:0x666666}));
-    leg.position.set(x+ox,.3,z); scene.add(leg);
+  const seat=new THREE.Mesh(new THREE.BoxGeometry(3,.14,.75),benchWood);
+  seat.position.set(x,.62,z); seat.castShadow=true; seat.receiveShadow=true; scene.add(seat);
+  // Back rest
+  const back=new THREE.Mesh(new THREE.BoxGeometry(3,.5,.08),benchWood);
+  back.position.set(x,1,z+0.34); back.castShadow=true; scene.add(back);
+  [-1.2,0,1.2].forEach(ox=>{
+    const leg=new THREE.Mesh(new THREE.BoxGeometry(.08,.55,.6),benchMetal);
+    leg.position.set(x+ox,.28,z); leg.castShadow=true; scene.add(leg);
   });
 }
 bench(10.5,-3); bench(10.5,1.5);
+
+// ── Trees around the yard ────────────────────────────
+function addTree(x,z,scale){
+  const s=scale||1;
+  const trunkMat=new THREE.MeshStandardMaterial({color:0x6B4226,roughness:0.85,metalness:0.0});
+  const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.12*s,.18*s,2*s,8),trunkMat);
+  trunk.position.set(x,s,z); trunk.castShadow=true; scene.add(trunk);
+  const leafMat=new THREE.MeshStandardMaterial({color:0x2D8B2D,roughness:0.7,metalness:0.0});
+  // Layered foliage spheres
+  [0,0.4,-0.3].forEach((dy,i)=>{
+    const r=(1.2-i*0.15)*s;
+    const leaf=new THREE.Mesh(new THREE.SphereGeometry(r,12,10),leafMat);
+    leaf.position.set(x+Math.sin(i*2)*0.15*s, 2*s+0.6*s+dy*s, z+Math.cos(i*2)*0.15*s);
+    leaf.castShadow=true; scene.add(leaf);
+  });
+}
+addTree(-14,5,1.2); addTree(-13,-8,1.0); addTree(14,6,1.1); addTree(15,-7,0.9);
+addTree(-16,0,1.3); addTree(16,-2,1.0);
 
 // ── Hopscotch grid on ground ─────────────────────────
 function hopLine(x1,z1,x2,z2){
@@ -681,16 +763,103 @@ for(let i=0;i<5;i++){
   hopLine(-11+i*0.9, 1, -11+i*0.9, 5);
   hopLine(-11, 1+i*0.9, -7, 1+i*0.9);
 }
-SQ.forEach(sq=>{
-  const m=new THREE.Mesh(new THREE.BoxGeometry(3.94,.065,3.94),
-    new THREE.MeshPhongMaterial({color:sq.color,shininess:58,specular:new THREE.Color(.1,.1,.1)}));
-  m.position.set(sq.cx,0.033,sq.cz); m.receiveShadow=true; scene.add(m);
-});
-function addLine(x1,z1,x2,z2){
-  const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(x1,.075,z1),new THREE.Vector3(x2,.075,z2)]);
-  scene.add(new THREE.Line(g,new THREE.LineBasicMaterial({color:0xFFFFFF})));
+
+// ── Spectator crowd behind fence ─────────────────────
+const spectators=[];
+const SPEC_COLORS=[0x3498DB,0xE74C3C,0x9B59B6,0x2ECC71,0xF39C12,0x1ABC9C,0xE67E22,0x34495E,0xFFFFFF,0xFF69B4];
+const HAIR_COLORS=[0x2C1810,0x8B6914,0x1A1A1A,0xD4763A,0x4A3728,0x666666];
+const SKIN_COLORS=[0xFFD5A8,0xC68642,0x8D5524,0xF1C27D,0xE0AC69];
+function buildSpectator(x,z,facing){
+  const sg=new THREE.Group();
+  const skinC=SKIN_COLORS[Math.random()*SKIN_COLORS.length|0];
+  const hairC=HAIR_COLORS[Math.random()*HAIR_COLORS.length|0];
+  const shirtC=SPEC_COLORS[Math.random()*SPEC_COLORS.length|0];
+  const sMat=mkMat(skinC), hMat=mkMat(hairC), shMat=mkMat(shirtC);
+  const sc=0.75+Math.random()*0.25;
+  // Body
+  const body=new THREE.Mesh(new THREE.CylinderGeometry(.09*sc,.12*sc,.42*sc,10),shMat);
+  body.position.y=.35*sc+.28*sc; body.castShadow=true; sg.add(body);
+  // Head
+  const hR=.16*sc;
+  const head=new THREE.Mesh(new THREE.SphereGeometry(hR,12,12),sMat);
+  head.position.y=.35*sc+.56*sc+hR*.7; head.castShadow=true; sg.add(head);
+  // Hair
+  const hairM=new THREE.Mesh(new THREE.SphereGeometry(hR*1.08,12,8,0,Math.PI*2,0,Math.PI/2),hMat);
+  hairM.position.copy(head.position); hairM.castShadow=true; sg.add(hairM);
+  // Legs
+  const pMat=mkMat(0x2C3E50);
+  [-0.055*sc,0.055*sc].forEach(ox=>{
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.045*sc,.045*sc,.28*sc,6),pMat);
+    leg.position.set(ox,.14*sc,0); leg.castShadow=true; sg.add(leg);
+  });
+  // Arms
+  [-0.14*sc,0.14*sc].forEach(ox=>{
+    const arm=new THREE.Mesh(new THREE.CylinderGeometry(.035*sc,.03*sc,.3*sc,6),sMat);
+    arm.position.set(ox,.35*sc+.35*sc,0); arm.castShadow=true; sg.add(arm);
+  });
+  sg.position.set(x,0,z);
+  sg.rotation.y=facing+Math.random()*0.4-0.2;
+  scene.add(sg);
+  spectators.push({group:sg,baseY:0,phase:Math.random()*Math.PI*2});
+  return sg;
 }
-[[-4,-4,4,-4],[4,-4,4,4],[4,4,-4,4],[-4,4,-4,-4],[0,-4,0,4],[-4,0,4,0]].forEach(p=>addLine(...p));
+// Back row (behind court, along fence)
+for(let i=0;i<14;i++){
+  const x=-9+i*1.4+Math.random()*0.5;
+  buildSpectator(x, -10+Math.random()*0.6, 0);
+}
+// Second row
+for(let i=0;i<10;i++){
+  const x=-7+i*1.5+Math.random()*0.4;
+  buildSpectator(x, -11.2+Math.random()*0.5, 0);
+}
+// Side spectators (left)
+for(let i=0;i<5;i++){
+  buildSpectator(-10.5+Math.random()*0.4, -6+i*2.5+Math.random()*0.6, Math.PI/2);
+}
+// Side spectators (right)
+for(let i=0;i<5;i++){
+  buildSpectator(10.5+Math.random()*0.4, -6+i*2.5+Math.random()*0.6, -Math.PI/2);
+}
+// Court squares – vibrant with subtle surface texture
+SQ.forEach(sq=>{
+  const sqCv=document.createElement('canvas'); sqCv.width=sqCv.height=128;
+  const sqCtx=sqCv.getContext('2d');
+  const c=new THREE.Color(sq.color);
+  sqCtx.fillStyle=`rgb(${c.r*255|0},${c.g*255|0},${c.b*255|0})`; sqCtx.fillRect(0,0,128,128);
+  // Subtle speckle for painted-court look
+  for(let i=0;i<600;i++){
+    const v=Math.random()*20-10;
+    sqCtx.fillStyle=`rgba(${Math.min(255,c.r*255+v)|0},${Math.min(255,c.g*255+v)|0},${Math.min(255,c.b*255+v)|0},0.35)`;
+    sqCtx.fillRect(Math.random()*128,Math.random()*128,Math.random()*3+1,Math.random()*3+1);
+  }
+  const sqTex=new THREE.CanvasTexture(sqCv);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(3.94,.075,3.94),
+    new THREE.MeshStandardMaterial({map:sqTex,roughness:0.6,metalness:0.05,color:sq.color}));
+  m.position.set(sq.cx,0.045,sq.cz); m.receiveShadow=true; scene.add(m);
+});
+// Court lines – thick painted stripes (not thin lines)
+function addCourtLine(x1,z1,x2,z2){
+  const dx=x2-x1,dz=z2-z1,len=Math.hypot(dx,dz);
+  const lineW=0.08, lineH=0.005;
+  const lineMat=new THREE.MeshStandardMaterial({color:0xFFFFFF,roughness:0.5,metalness:0.0,emissive:0xFFFFFF,emissiveIntensity:0.08});
+  const lineM=new THREE.Mesh(new THREE.BoxGeometry(len,lineH,lineW),lineMat);
+  lineM.position.set((x1+x2)/2,0.084,(z1+z2)/2);
+  lineM.rotation.y=Math.atan2(dz,dx);
+  lineM.receiveShadow=true; scene.add(lineM);
+}
+// Outer boundary
+addCourtLine(-4,-4,4,-4); addCourtLine(4,-4,4,4); addCourtLine(4,4,-4,4); addCourtLine(-4,4,-4,-4);
+// Cross lines
+addCourtLine(0,-4,0,4); addCourtLine(-4,0,4,0);
+// Center circle marker
+const centerCircle=new THREE.Mesh(new THREE.RingGeometry(0.3,0.38,32),
+  new THREE.MeshStandardMaterial({color:0xFFFFFF,roughness:0.5,side:THREE.DoubleSide,emissive:0xFFFFFF,emissiveIntensity:0.05}));
+centerCircle.rotation.x=-Math.PI/2; centerCircle.position.y=0.085; scene.add(centerCircle);
+// Center dot
+const centerDot=new THREE.Mesh(new THREE.CircleGeometry(0.12,16),
+  new THREE.MeshStandardMaterial({color:0x222222,roughness:0.4}));
+centerDot.rotation.x=-Math.PI/2; centerDot.position.y=0.086; scene.add(centerDot);
 
 // ══════════════════════════════════════════════════════
 // BALL
@@ -703,11 +872,11 @@ bCtx.strokeStyle='#111'; bCtx.lineWidth=7;
 [0.4,Math.PI+0.4].forEach(a=>{bCtx.beginPath();bCtx.arc(128,128,106,a,a+2.35);bCtx.stroke();});
 const ballMesh=new THREE.Mesh(
   new THREE.SphereGeometry(BALL_R,32,32),
-  new THREE.MeshPhongMaterial({map:new THREE.CanvasTexture(bCv),shininess:95,specular:new THREE.Color(.4,.2,.1)})
+  new THREE.MeshStandardMaterial({map:new THREE.CanvasTexture(bCv),roughness:0.35,metalness:0.05})
 );
 ballMesh.castShadow=true; scene.add(ballMesh);
-const blobMat=new THREE.MeshBasicMaterial({color:0,transparent:true,opacity:.2});
-const blob=new THREE.Mesh(new THREE.CircleGeometry(BALL_R*1.8,16),blobMat);
+const blobMat=new THREE.MeshBasicMaterial({color:0x111111,transparent:true,opacity:.25});
+const blob=new THREE.Mesh(new THREE.CircleGeometry(BALL_R*2.2,24),blobMat);
 blob.rotation.x=-Math.PI/2; blob.position.y=0.072; scene.add(blob);
 
 // ── Aim X crosshair ────────────────────────────────────────────
@@ -744,8 +913,8 @@ window.addEventListener('touchmove', e=>{
 // ══════════════════════════════════════════════════════
 // CHARACTER BUILDER
 // ══════════════════════════════════════════════════════
-function mkMat(col){ return new THREE.MeshPhongMaterial({color:col,shininess:22}); }
-const skinMat=mkMat(0xFFCE9E), hairMat=mkMat(0x2C1810), pantMat=mkMat(0x1A252F);
+function mkMat(col){ return new THREE.MeshStandardMaterial({color:col,roughness:0.55,metalness:0.02}); }
+const skinMat=mkMat(0xFFD5A8), hairMat=mkMat(0x2C1810), pantMat=mkMat(0x1A252F);
 
 function buildChar(sq){
   const g=new THREE.Group();
@@ -755,18 +924,40 @@ function buildChar(sq){
     m.castShadow=true; m.receiveShadow=true; g.add(m); return m;
   }
 
-  // Shirt / body
-  add(new THREE.CylinderGeometry(.115,.150,BODY_H,16), mkMat(new THREE.Color(sq.color)), 0, LEG_H+BODY_H/2, 0);
-  // Head + hair
-  add(new THREE.SphereGeometry(HEAD_R,16,16), skinMat, 0, LEG_H+BODY_H+HEAD_R*.9, 0);
-  const hair=new THREE.Mesh(new THREE.SphereGeometry(HEAD_R*1.07,16,8,0,Math.PI*2,0,Math.PI/2),hairMat);
-  hair.position.set(0,LEG_H+BODY_H+HEAD_R*.9,0); hair.castShadow=true; g.add(hair);
+  // Shirt / body – rounder torso
+  add(new THREE.CylinderGeometry(.12,.155,BODY_H,16), mkMat(new THREE.Color(sq.color)), 0, LEG_H+BODY_H/2, 0);
+  // Head + hair – bigger chibi head
+  const headY=LEG_H+BODY_H+HEAD_R*.85;
+  const headMesh=add(new THREE.SphereGeometry(HEAD_R,20,20), skinMat, 0, headY, 0);
+  const hair=new THREE.Mesh(new THREE.SphereGeometry(HEAD_R*1.08,20,10,0,Math.PI*2,0,Math.PI/2),hairMat);
+  hair.position.set(0,headY,0); hair.castShadow=true; g.add(hair);
+  // Eyes – big expressive chibi eyes
+  const eyeMat=new THREE.MeshBasicMaterial({color:0x111111});
+  const eyeWhite=new THREE.MeshBasicMaterial({color:0xFFFFFF});
+  const eyeR=HEAD_R*0.13;
+  [-0.065,0.065].forEach(ex=>{
+    const white=new THREE.Mesh(new THREE.SphereGeometry(eyeR*1.6,8,8),eyeWhite);
+    white.position.set(ex,headY+HEAD_R*0.08,HEAD_R*0.88); g.add(white);
+    const pupil=new THREE.Mesh(new THREE.SphereGeometry(eyeR,8,8),eyeMat);
+    pupil.position.set(ex,headY+HEAD_R*0.06,HEAD_R*0.96); g.add(pupil);
+    // Highlight
+    const hl=new THREE.Mesh(new THREE.SphereGeometry(eyeR*0.4,6,6),eyeWhite);
+    hl.position.set(ex+eyeR*0.3,headY+HEAD_R*0.14,HEAD_R*0.99); g.add(hl);
+  });
+  // Small mouth
+  const mouth=new THREE.Mesh(new THREE.SphereGeometry(HEAD_R*0.06,6,4),new THREE.MeshBasicMaterial({color:0x994444}));
+  mouth.scale.set(2.5,1,1); mouth.position.set(0,headY-HEAD_R*0.22,HEAD_R*0.9); g.add(mouth);
 
-  // Hip pivots → legs
+  // Hip pivots → legs with shoes
+  const shoeMat=mkMat(0xFFFFFF);
   function mkHip(ox){
     const p=new THREE.Group(); p.position.set(ox,LEG_H,0);
-    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.062,.062,LEG_H,8),pantMat);
-    leg.position.y=-LEG_H/2; leg.castShadow=true; p.add(leg); g.add(p); return p;
+    const leg=new THREE.Mesh(new THREE.CylinderGeometry(.058,.058,LEG_H,8),pantMat);
+    leg.position.y=-LEG_H/2; leg.castShadow=true; p.add(leg);
+    // Shoe
+    const shoe=new THREE.Mesh(new THREE.SphereGeometry(.075,8,6),shoeMat);
+    shoe.scale.set(1,0.6,1.4); shoe.position.set(0,-LEG_H/2-0.02,0.02); shoe.castShadow=true; p.add(shoe);
+    g.add(p); return p;
   }
   sq.lHip=mkHip(-0.08); sq.rHip=mkHip(0.08);
 
@@ -786,11 +977,17 @@ function buildChar(sq){
   }
   mkArm(-0.22,false); mkArm(0.22,true);
 
-  // Player glow ring
-  if(sq.isPlayer){
-    const ring=new THREE.Mesh(new THREE.TorusGeometry(.32,.025,8,32),
-      new THREE.MeshBasicMaterial({color:0xFFFFFF,transparent:true,opacity:.7}));
-    ring.rotation.x=-Math.PI/2; ring.position.y=0.02; g.add(ring); sq.ring=ring;
+  // Colored glow ring under ALL characters (like mobile basketball game style)
+  {
+    const ringColor = new THREE.Color(sq.color);
+    // Outer ring
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(.35,.03,12,48),
+      new THREE.MeshBasicMaterial({color:ringColor,transparent:true,opacity:sq.isPlayer?0.85:0.6}));
+    ring.rotation.x=-Math.PI/2; ring.position.y=0.025; g.add(ring); sq.ring=ring;
+    // Inner glow disc
+    const disc=new THREE.Mesh(new THREE.CircleGeometry(.33,32),
+      new THREE.MeshBasicMaterial({color:ringColor,transparent:true,opacity:sq.isPlayer?0.18:0.10,side:THREE.DoubleSide}));
+    disc.rotation.x=-Math.PI/2; disc.position.y=0.022; g.add(disc); sq.ringDisc=disc;
   }
 
   // Animation state
@@ -837,16 +1034,27 @@ const referee = {group:null, lSh:null, rSh:null, lEl:null, rEl:null, lHip:null, 
   add(new THREE.CylinderGeometry(.135,.135,bodyH*0.08,16), stripeMat, 0, legH+bodyH*0.65, 0);
   add(new THREE.CylinderGeometry(.135,.135,bodyH*0.08,16), stripeMat, 0, legH+bodyH*0.45, 0);
 
-  // Head
-  referee.headMesh=add(new THREE.SphereGeometry(headR,16,16), skinMat, 0, legH+bodyH+headR*.9, 0);
-  const hair=new THREE.Mesh(new THREE.SphereGeometry(headR*1.07,16,8,0,Math.PI*2,0,Math.PI/2),hairMat);
-  hair.position.set(0,legH+bodyH+headR*.9,0); hair.castShadow=true; g.add(hair);
+  // Head – chibi proportioned
+  const refHeadY=legH+bodyH+headR*.85;
+  referee.headMesh=add(new THREE.SphereGeometry(headR,20,20), skinMat, 0, refHeadY, 0);
+  const rhair=new THREE.Mesh(new THREE.SphereGeometry(headR*1.08,20,10,0,Math.PI*2,0,Math.PI/2),hairMat);
+  rhair.position.set(0,refHeadY,0); rhair.castShadow=true; g.add(rhair);
+  // Referee eyes
+  const refEyeMat=new THREE.MeshBasicMaterial({color:0x111111});
+  const refEyeWhite=new THREE.MeshBasicMaterial({color:0xFFFFFF});
+  const refEyeR=headR*0.12;
+  [-0.07,0.07].forEach(ex=>{
+    const w=new THREE.Mesh(new THREE.SphereGeometry(refEyeR*1.5,8,8),refEyeWhite);
+    w.position.set(ex,refHeadY+headR*0.05,headR*0.88); g.add(w);
+    const p=new THREE.Mesh(new THREE.SphereGeometry(refEyeR,8,8),refEyeMat);
+    p.position.set(ex,refHeadY+headR*0.03,headR*0.95); g.add(p);
+  });
   // Cap (flat disc on top)
   const capMat=mkMat(0x111111);
   const cap=new THREE.Mesh(new THREE.CylinderGeometry(headR*1.1,headR*1.2,0.04,16),capMat);
-  cap.position.set(0,legH+bodyH+headR*1.7,0); cap.castShadow=true; g.add(cap);
-  const brim=new THREE.Mesh(new THREE.CylinderGeometry(headR*0.3,headR*1.5,0.02,16),capMat);
-  brim.position.set(0,legH+bodyH+headR*1.68,headR*0.4); brim.castShadow=true; g.add(brim);
+  cap.position.set(0,refHeadY+headR*0.85,0); cap.castShadow=true; g.add(cap);
+  const capBrim=new THREE.Mesh(new THREE.CylinderGeometry(headR*0.3,headR*1.5,0.02,16),capMat);
+  capBrim.position.set(0,refHeadY+headR*0.83,headR*0.4); capBrim.castShadow=true; g.add(capBrim);
 
   // Legs
   function mkHip(ox){
@@ -1565,7 +1773,11 @@ function updateChars(dt, now){
       lr(sq.lEl,'x',0.25,dt*4); lr(sq.rEl,'x',0.25,dt*4);
     }
 
-    if(sq.ring) sq.ring.material.opacity=.48+Math.sin(now*.003)*.24;
+    if(sq.ring){
+      const baseOp=sq.isPlayer?0.85:0.6;
+      sq.ring.material.opacity=baseOp*(.7+Math.sin(now*.003)*.3);
+      if(sq.ringDisc) sq.ringDisc.material.opacity=(sq.isPlayer?0.18:0.10)*(.7+Math.sin(now*.003+1)*.3);
+    }
   });
 
   // ── Referee animation ──
@@ -1586,6 +1798,13 @@ function updateChars(dt, now){
       lr(referee.rEl,'x',1.4,dt*6);
     }
   }
+
+  // ── Spectator crowd animation ──
+  spectators.forEach(s=>{
+    // Gentle idle sway and occasional bobbing
+    s.group.position.y=s.baseY+Math.sin(now*.001+s.phase)*.02;
+    s.group.rotation.y+=Math.sin(now*.0005+s.phase*2)*.0003;
+  });
 }
 
 // ══════════════════════════════════════════════════════
